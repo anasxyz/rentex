@@ -19,13 +19,13 @@ pub struct ShapeRenderer {
 
 impl ShapeRenderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, width: f32, height: f32) -> Self {
-        // Vertex shader - converts screen coords to clip space
+        // Load shader from file
         let vertex_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shape Vertex Shader"),
+            label: Some("Shape Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/shape.wgsl").into()),
         });
 
-        // Create render pipeline
+        // Create render pipeline with MSAA
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Shape Pipeline"),
             layout: None,
@@ -65,14 +65,18 @@ impl ShapeRenderer {
                 ..Default::default()
             },
             depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
+            multisample: wgpu::MultisampleState {
+                count: 4, // 4x MSAA
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
             multiview: None,
         });
 
         // Create initial vertex buffer
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Shape Vertex Buffer"),
-            size: 1024 * std::mem::size_of::<Vertex>() as u64, // Initial size
+            size: 1024 * std::mem::size_of::<Vertex>() as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -201,7 +205,7 @@ impl ShapeRenderer {
         if required_size > self.vertex_buffer.size() {
             self.vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Shape Vertex Buffer"),
-                size: required_size * 2, // Double size to reduce reallocations
+                size: required_size * 2,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });

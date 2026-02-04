@@ -6,7 +6,6 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
-
 use rentex::ShapeRenderer;
 
 fn main() {
@@ -61,7 +60,23 @@ async fn run() {
     };
     surface.configure(&device, &config);
 
-    // Create shape renderer
+    // Create MSAA texture
+    let mut msaa_texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("MSAA Texture"),
+        size: wgpu::Extent3d {
+            width: config.width,
+            height: config.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 4, // 4x MSAA
+        dimension: wgpu::TextureDimension::D2,
+        format: surface_format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let mut msaa_view = msaa_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
     let mut shape_renderer = ShapeRenderer::new(&device, surface_format, config.width as f32, config.height as f32);
 
     let _ = event_loop.run(move |event, target| {
@@ -73,6 +88,24 @@ async fn run() {
                     config.width = new_size.width;
                     config.height = new_size.height;
                     surface.configure(&device, &config);
+                    
+                    // Recreate MSAA texture
+                    msaa_texture = device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("MSAA Texture"),
+                        size: wgpu::Extent3d {
+                            width: config.width,
+                            height: config.height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 4,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: surface_format,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                        view_formats: &[],
+                    });
+                    msaa_view = msaa_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                    
                     shape_renderer.resize(config.width as f32, config.height as f32);
                     window.request_redraw();
                 }
@@ -85,8 +118,8 @@ async fn run() {
                         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                             label: None,
                             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                view: &view,
-                                resolve_target: None,
+                                view: &msaa_view, // Render to MSAA texture
+                                resolve_target: Some(&view), // Resolve to screen
                                 ops: wgpu::Operations {
                                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                                     store: wgpu::StoreOp::Store,
@@ -97,7 +130,7 @@ async fn run() {
                             occlusion_query_set: None,
                         });
 
-                        // Draw some test shapes
+                        // Draw test shapes
                         shape_renderer.clear();
                         shape_renderer.rect(50.0, 50.0, 200.0, 100.0, [1.0, 0.0, 0.0, 1.0]); // Red rect
                         shape_renderer.circle(400.0, 150.0, 50.0, [0.0, 1.0, 0.0, 1.0]); // Green circle
