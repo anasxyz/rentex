@@ -20,10 +20,6 @@ impl TextRenderer {
     ) -> Self {
         let mut font_system = FontSystem::new();
         
-        // Load custom font
-        let font_data = include_bytes!("../fonts/ZedMonoNerdFont-Regular.ttf");
-        font_system.db_mut().load_font_data(font_data.to_vec());
-        
         let swash_cache = SwashCache::new();
         let mut atlas = TextAtlas::new(device, queue, format);
         let renderer = GlyphonRenderer::new(
@@ -56,7 +52,7 @@ impl TextRenderer {
         // Create a text buffer
         let mut buffer = Buffer::new(
             &mut self.font_system,
-            Metrics::new(11.0, 22.0), // font_size, line_height
+            Metrics::new(22.0, 35.0), // font_size, line_height
         );
 
         // Set buffer size to enable proper text layout

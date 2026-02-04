@@ -98,8 +98,8 @@ async fn run() {
                         // Test text with multiple lines
                         let test_text = "The quick brown fox jumps over the lazy dog\n\
                                         ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789\n\
-                                        abcdefghijklmnopqrstuvwxyz !@#$%^&*()\n\
-                                        fn main() { println!(\"Hello, world!\"); }";
+                                        abcdefghijklmnopqrstuvwxyz !@#$%^&*()😭😭😭日本語السينما للجميع \n\
+                                        fn main() { println!(\"Hello, world!\"); }dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
                         
                         text_renderer.draw_text(
                             test_text,
