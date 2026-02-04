@@ -1,0 +1,8 @@
+[package]
+name = "rentex"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wgpu = "0.19"
+glyphon = "0.5"
