@@ -95,8 +95,14 @@ async fn run() {
                             occlusion_query_set: None,
                         });
 
+                        // Test text with multiple lines
+                        let test_text = "The quick brown fox jumps over the lazy dog\n\
+                                        ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789\n\
+                                        abcdefghijklmnopqrstuvwxyz !@#$%^&*()\n\
+                                        fn main() { println!(\"Hello, world!\"); }";
+                        
                         text_renderer.draw_text(
-                            "Hello, crisp world!",
+                            test_text,
                             10.0,
                             10.0,
                             config.width as f32,

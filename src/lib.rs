@@ -1,8 +1,8 @@
-// text-render/src/lib.rs
+// src/lib.rs
 
 use glyphon::{
-    Attrs, Buffer, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache, TextArea,
-    TextAtlas, TextRenderer as GlyphonRenderer,
+    FontSystem, SwashCache, TextAtlas, TextRenderer as GlyphonRenderer,
+    Attrs, Family, Shaping, Buffer, Metrics, TextArea, Resolution,
 };
 
 pub struct TextRenderer {
@@ -13,12 +13,25 @@ pub struct TextRenderer {
 }
 
 impl TextRenderer {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
-        let font_system = FontSystem::new(); // Remove 'mut'
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+    ) -> Self {
+        let mut font_system = FontSystem::new();
+        
+        // Load custom font
+        let font_data = include_bytes!("../fonts/ZedMonoNerdFont-Regular.ttf");
+        font_system.db_mut().load_font_data(font_data.to_vec());
+        
         let swash_cache = SwashCache::new();
         let mut atlas = TextAtlas::new(device, queue, format);
-        let renderer =
-            GlyphonRenderer::new(&mut atlas, device, wgpu::MultisampleState::default(), None);
+        let renderer = GlyphonRenderer::new(
+            &mut atlas,
+            device,
+            wgpu::MultisampleState::default(),
+            None,
+        );
 
         Self {
             font_system,
@@ -28,7 +41,7 @@ impl TextRenderer {
         }
     }
 
-    /// Draw a single line of text at position (x, y)
+    /// Draw text with multiple lines
     pub fn draw_text<'pass>(
         &'pass mut self,
         text: &str,
@@ -43,16 +56,22 @@ impl TextRenderer {
         // Create a text buffer
         let mut buffer = Buffer::new(
             &mut self.font_system,
-            Metrics::new(14.0, 20.0), // font_size, line_height
+            Metrics::new(11.0, 22.0), // font_size, line_height
         );
 
-        buffer.set_size(&mut self.font_system, screen_width, screen_height);
+        // Set buffer size to enable proper text layout
+        buffer.set_size(&mut self.font_system, screen_width - x * 2.0, screen_height - y * 2.0);
+        
+        // Set text with proper wrapping
         buffer.set_text(
             &mut self.font_system,
             text,
-            Attrs::new().family(Family::Monospace),
+            Attrs::new().family(Family::Name("JetBrainsMono Nerd Font")),
             Shaping::Advanced,
         );
+        
+        // Important: shape the lines so glyphon knows where line breaks are
+        buffer.shape_until_scroll(&mut self.font_system);
 
         // Create text area
         let text_area = TextArea {
