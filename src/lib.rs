@@ -1,5 +1,8 @@
 // src/lib.rs
 
+mod shapes;
+pub use shapes::ShapeRenderer;
+
 use glyphon::{
     FontSystem, SwashCache, TextAtlas, TextRenderer as GlyphonRenderer,
     Attrs, Family, Shaping, Buffer, Metrics, TextArea, Resolution,
