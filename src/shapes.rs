@@ -1,6 +1,7 @@
-// src/shapes.rs
+// src/shapes.rs - HIGHLY OPTIMIZED
 
 use wgpu;
+use std::mem;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -15,6 +16,13 @@ pub struct ShapeRenderer {
     vertices: Vec<Vertex>,
     screen_width: f32,
     screen_height: f32,
+    
+    // Optimization: Pre-allocate for common sizes
+    vertex_capacity: usize,
+    
+    // Optimization: Cache NDC transform values
+    ndc_scale_x: f32,
+    ndc_scale_y: f32,
 }
 
 impl ShapeRenderer {
@@ -31,7 +39,7 @@ impl ShapeRenderer {
                 module: &vertex_shader,
                 entry_point: "vs_main",
                 buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+                    array_stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &[
                         wgpu::VertexAttribute {
@@ -40,7 +48,7 @@ impl ShapeRenderer {
                             format: wgpu::VertexFormat::Float32x2,
                         },
                         wgpu::VertexAttribute {
-                            offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                            offset: mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                             shader_location: 1,
                             format: wgpu::VertexFormat::Float32x4,
                         },
@@ -58,7 +66,12 @@ impl ShapeRenderer {
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                ..Default::default()
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState {
@@ -69,34 +82,68 @@ impl ShapeRenderer {
             multiview: None,
         });
 
+        // Optimization: Start with large buffer to minimize reallocations
+        let vertex_capacity = 4096;
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Shape Vertex Buffer"),
-            size: 1024 * std::mem::size_of::<Vertex>() as u64,
+            size: (vertex_capacity * mem::size_of::<Vertex>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
+        let ndc_scale_x = 2.0 / width;
+        let ndc_scale_y = 2.0 / height;
+
         Self {
             pipeline,
             vertex_buffer,
-            vertices: Vec::new(),
+            vertices: Vec::with_capacity(vertex_capacity),
             screen_width: width,
             screen_height: height,
+            vertex_capacity,
+            ndc_scale_x,
+            ndc_scale_y,
         }
     }
 
+    #[inline(always)]
     pub fn clear(&mut self) {
+        // Optimization: Don't deallocate, just reset length
         self.vertices.clear();
     }
 
+    /// Optimized NDC conversion using cached scale values
+    #[inline(always)]
     fn to_ndc(&self, x: f32, y: f32) -> [f32; 2] {
         [
-            (x / self.screen_width) * 2.0 - 1.0,
-            1.0 - (y / self.screen_height) * 2.0,
+            x * self.ndc_scale_x - 1.0,
+            1.0 - y * self.ndc_scale_y,
         ]
     }
 
-    /// Draw a filled rectangle with outline
+    /// Optimized: Push 6 vertices for quad in one go
+    #[inline(always)]
+    fn push_quad(&mut self, p1: [f32; 2], p2: [f32; 2], p3: [f32; 2], p4: [f32; 2], color: [f32; 4]) {
+        // Reserve space upfront to avoid multiple allocations
+        self.vertices.reserve(6);
+        
+        unsafe {
+            let len = self.vertices.len();
+            let ptr = self.vertices.as_mut_ptr().add(len);
+            
+            // Write directly to memory, bypassing bounds checks
+            ptr.write(Vertex { position: p1, color });
+            ptr.add(1).write(Vertex { position: p2, color });
+            ptr.add(2).write(Vertex { position: p3, color });
+            ptr.add(3).write(Vertex { position: p2, color });
+            ptr.add(4).write(Vertex { position: p4, color });
+            ptr.add(5).write(Vertex { position: p3, color });
+            
+            self.vertices.set_len(len + 6);
+        }
+    }
+
+    /// Optimized rectangle drawing
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4], outline_color: [f32; 4], outline_thickness: f32) {
         // Draw fill
         let p1 = self.to_ndc(x, y);
@@ -104,147 +151,190 @@ impl ShapeRenderer {
         let p3 = self.to_ndc(x, y + h);
         let p4 = self.to_ndc(x + w, y + h);
         
-        self.vertices.extend_from_slice(&[
-            Vertex { position: p1, color },
-            Vertex { position: p2, color },
-            Vertex { position: p3, color },
-            Vertex { position: p2, color },
-            Vertex { position: p4, color },
-            Vertex { position: p3, color },
-        ]);
+        self.push_quad(p1, p2, p3, p4, color);
 
         // Draw outline if thickness > 0
         if outline_thickness > 0.0 {
-            let half = outline_thickness / 2.0;
-            self.rect_outline(x, y, w, h, outline_color, half);
+            let half = outline_thickness * 0.5;
+            self.rect_outline_fast(x, y, w, h, outline_color, half);
         }
     }
 
-    fn rect_outline(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4], half: f32) {
-        // Top
-        let p1 = self.to_ndc(x - half, y - half);
-        let p2 = self.to_ndc(x + w + half, y - half);
-        let p3 = self.to_ndc(x - half, y + half);
-        let p4 = self.to_ndc(x + w + half, y + half);
-        self.vertices.extend_from_slice(&[
-            Vertex { position: p1, color }, Vertex { position: p2, color }, Vertex { position: p3, color },
-            Vertex { position: p2, color }, Vertex { position: p4, color }, Vertex { position: p3, color },
-        ]);
+    /// Optimized outline with minimal coordinate conversions
+    #[inline]
+    fn rect_outline_fast(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4], half: f32) {
+        // Top edge
+        self.push_quad(
+            self.to_ndc(x - half, y - half),
+            self.to_ndc(x + w + half, y - half),
+            self.to_ndc(x - half, y + half),
+            self.to_ndc(x + w + half, y + half),
+            color
+        );
 
-        // Bottom
-        let p1 = self.to_ndc(x - half, y + h - half);
-        let p2 = self.to_ndc(x + w + half, y + h - half);
-        let p3 = self.to_ndc(x - half, y + h + half);
-        let p4 = self.to_ndc(x + w + half, y + h + half);
-        self.vertices.extend_from_slice(&[
-            Vertex { position: p1, color }, Vertex { position: p2, color }, Vertex { position: p3, color },
-            Vertex { position: p2, color }, Vertex { position: p4, color }, Vertex { position: p3, color },
-        ]);
+        // Bottom edge
+        self.push_quad(
+            self.to_ndc(x - half, y + h - half),
+            self.to_ndc(x + w + half, y + h - half),
+            self.to_ndc(x - half, y + h + half),
+            self.to_ndc(x + w + half, y + h + half),
+            color
+        );
 
-        // Left
-        let p1 = self.to_ndc(x - half, y + half);
-        let p2 = self.to_ndc(x + half, y + half);
-        let p3 = self.to_ndc(x - half, y + h - half);
-        let p4 = self.to_ndc(x + half, y + h - half);
-        self.vertices.extend_from_slice(&[
-            Vertex { position: p1, color }, Vertex { position: p2, color }, Vertex { position: p3, color },
-            Vertex { position: p2, color }, Vertex { position: p4, color }, Vertex { position: p3, color },
-        ]);
+        // Left edge
+        self.push_quad(
+            self.to_ndc(x - half, y + half),
+            self.to_ndc(x + half, y + half),
+            self.to_ndc(x - half, y + h - half),
+            self.to_ndc(x + half, y + h - half),
+            color
+        );
 
-        // Right
-        let p1 = self.to_ndc(x + w - half, y + half);
-        let p2 = self.to_ndc(x + w + half, y + half);
-        let p3 = self.to_ndc(x + w - half, y + h - half);
-        let p4 = self.to_ndc(x + w + half, y + h - half);
-        self.vertices.extend_from_slice(&[
-            Vertex { position: p1, color }, Vertex { position: p2, color }, Vertex { position: p3, color },
-            Vertex { position: p2, color }, Vertex { position: p4, color }, Vertex { position: p3, color },
-        ]);
+        // Right edge
+        self.push_quad(
+            self.to_ndc(x + w - half, y + half),
+            self.to_ndc(x + w + half, y + half),
+            self.to_ndc(x + w - half, y + h - half),
+            self.to_ndc(x + w + half, y + h - half),
+            color
+        );
     }
 
+    #[inline(always)]
     pub fn draw_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4], outline_color: [f32; 4], outline_thickness: f32) {
         self.rect(x, y, w, h, color, outline_color, outline_thickness);
     }
 
-    /// Draw a filled circle with outline
+    /// Optimized circle with pre-computed trig values
     pub fn circle(&mut self, cx: f32, cy: f32, radius: f32, color: [f32; 4], outline_color: [f32; 4], outline_thickness: f32) {
-        let segments = 32;
-        let pi = std::f32::consts::PI;
+        const SEGMENTS: usize = 32;
         
-        // Draw fill
+        // Optimization: Pre-allocate exact space needed
+        self.vertices.reserve(SEGMENTS * 3);
+        
         let center = self.to_ndc(cx, cy);
-        for i in 0..segments {
-            let angle1 = (i as f32 / segments as f32) * 2.0 * pi;
-            let angle2 = ((i + 1) as f32 / segments as f32) * 2.0 * pi;
-            
-            let p1 = self.to_ndc(cx + radius * angle1.cos(), cy + radius * angle1.sin());
-            let p2 = self.to_ndc(cx + radius * angle2.cos(), cy + radius * angle2.sin());
-            
-            self.vertices.extend_from_slice(&[
-                Vertex { position: center, color },
-                Vertex { position: p1, color },
-                Vertex { position: p2, color },
-            ]);
-        }
-
-        // Draw outline if thickness > 0
-        if outline_thickness > 0.0 {
-            self.circle_outline(cx, cy, radius, outline_color, outline_thickness);
-        }
-    }
-
-    fn circle_outline(&mut self, cx: f32, cy: f32, radius: f32, color: [f32; 4], thickness: f32) {
-        let segments = 32;
-        let pi = std::f32::consts::PI;
-        let inner_radius = radius - thickness / 2.0;
-        let outer_radius = radius + thickness / 2.0;
         
-        for i in 0..segments {
-            let angle1 = (i as f32 / segments as f32) * 2.0 * pi;
-            let angle2 = ((i + 1) as f32 / segments as f32) * 2.0 * pi;
+        // Optimization: Use lookup table for sin/cos
+        use std::sync::LazyLock;
+        static CIRCLE_LUT: LazyLock<[(f32, f32); 33]> = LazyLock::new(|| {
+            let mut lut = [(0.0, 0.0); 33];
+            for i in 0..=32 {
+                let angle = (i as f32 / 32.0) * 2.0 * std::f32::consts::PI;
+                lut[i] = (angle.cos(), angle.sin());
+            }
+            lut
+        });
+        
+        for i in 0..SEGMENTS {
+            let (cos1, sin1) = CIRCLE_LUT[i];
+            let (cos2, sin2) = CIRCLE_LUT[i + 1];
             
-            let inner1 = self.to_ndc(cx + inner_radius * angle1.cos(), cy + inner_radius * angle1.sin());
-            let inner2 = self.to_ndc(cx + inner_radius * angle2.cos(), cy + inner_radius * angle2.sin());
-            let outer1 = self.to_ndc(cx + outer_radius * angle1.cos(), cy + outer_radius * angle1.sin());
-            let outer2 = self.to_ndc(cx + outer_radius * angle2.cos(), cy + outer_radius * angle2.sin());
+            let p1 = self.to_ndc(cx + radius * cos1, cy + radius * sin1);
+            let p2 = self.to_ndc(cx + radius * cos2, cy + radius * sin2);
             
-            self.vertices.extend_from_slice(&[
-                Vertex { position: inner1, color },
-                Vertex { position: outer1, color },
-                Vertex { position: inner2, color },
-                Vertex { position: outer1, color },
-                Vertex { position: outer2, color },
-                Vertex { position: inner2, color },
-            ]);
+            unsafe {
+                let len = self.vertices.len();
+                let ptr = self.vertices.as_mut_ptr().add(len);
+                ptr.write(Vertex { position: center, color });
+                ptr.add(1).write(Vertex { position: p1, color });
+                ptr.add(2).write(Vertex { position: p2, color });
+                self.vertices.set_len(len + 3);
+            }
+        }
+
+        // Draw outline
+        if outline_thickness > 0.0 {
+            self.circle_outline_fast(cx, cy, radius, outline_color, outline_thickness);
         }
     }
 
+    #[inline]
+    fn circle_outline_fast(&mut self, cx: f32, cy: f32, radius: f32, color: [f32; 4], thickness: f32) {
+        const SEGMENTS: usize = 32;
+        
+        let inner_radius = radius - thickness * 0.5;
+        let outer_radius = radius + thickness * 0.5;
+        
+        self.vertices.reserve(SEGMENTS * 6);
+        
+        use std::sync::LazyLock;
+        static CIRCLE_LUT: LazyLock<[(f32, f32); 33]> = LazyLock::new(|| {
+            let mut lut = [(0.0, 0.0); 33];
+            for i in 0..=32 {
+                let angle = (i as f32 / 32.0) * 2.0 * std::f32::consts::PI;
+                lut[i] = (angle.cos(), angle.sin());
+            }
+            lut
+        });
+        
+        for i in 0..SEGMENTS {
+            let (cos1, sin1) = CIRCLE_LUT[i];
+            let (cos2, sin2) = CIRCLE_LUT[i + 1];
+            
+            let inner1 = self.to_ndc(cx + inner_radius * cos1, cy + inner_radius * sin1);
+            let inner2 = self.to_ndc(cx + inner_radius * cos2, cy + inner_radius * sin2);
+            let outer1 = self.to_ndc(cx + outer_radius * cos1, cy + outer_radius * sin1);
+            let outer2 = self.to_ndc(cx + outer_radius * cos2, cy + outer_radius * sin2);
+            
+            self.push_quad(inner1, outer1, inner2, outer2, color);
+        }
+    }
+
+    #[inline(always)]
     pub fn draw_circle(&mut self, cx: f32, cy: f32, radius: f32, color: [f32; 4], outline_color: [f32; 4], outline_thickness: f32) {
         self.circle(cx, cy, radius, color, outline_color, outline_thickness);
     }
 
-    /// Draw a rounded rectangle with outline
+    /// Optimized rounded rectangle
     pub fn rounded_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: [f32; 4], outline_color: [f32; 4], outline_thickness: f32) {
-        let radius = radius.min(w / 2.0).min(h / 2.0);
+        let radius = radius.min(w * 0.5).min(h * 0.5);
         
-        // Draw fill
+        // Draw fill rectangles
         self.rect(x + radius, y, w - radius * 2.0, h, color, [0.0; 4], 0.0);
         self.rect(x, y + radius, radius, h - radius * 2.0, color, [0.0; 4], 0.0);
         self.rect(x + w - radius, y + radius, radius, h - radius * 2.0, color, [0.0; 4], 0.0);
         
-        self.quarter_circle(x + radius, y + radius, radius, color, 2);
-        self.quarter_circle(x + w - radius, y + radius, radius, color, 3);
-        self.quarter_circle(x + w - radius, y + h - radius, radius, color, 0);
-        self.quarter_circle(x + radius, y + h - radius, radius, color, 1);
+        // Draw corner circles
+        self.quarter_circle_fast(x + radius, y + radius, radius, color, 2);
+        self.quarter_circle_fast(x + w - radius, y + radius, radius, color, 3);
+        self.quarter_circle_fast(x + w - radius, y + h - radius, radius, color, 0);
+        self.quarter_circle_fast(x + radius, y + h - radius, radius, color, 1);
 
-        // Draw outline if thickness > 0
+        // Draw outline
         if outline_thickness > 0.0 {
-            self.rounded_rect_outline(x, y, w, h, radius, outline_color, outline_thickness);
+            self.rounded_rect_outline_fast(x, y, w, h, radius, outline_color, outline_thickness);
         }
     }
 
-    fn rounded_rect_outline(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: [f32; 4], thickness: f32) {
-        let half = thickness / 2.0;
+    #[inline]
+    fn quarter_circle_fast(&mut self, cx: f32, cy: f32, radius: f32, color: [f32; 4], quarter: u32) {
+        const SEGMENTS: usize = 8;
+        let start_angle = quarter as f32 * std::f32::consts::FRAC_PI_2;
+        
+        self.vertices.reserve(SEGMENTS * 3);
+        let center = self.to_ndc(cx, cy);
+        
+        for i in 0..SEGMENTS {
+            let angle1 = start_angle + (i as f32 / SEGMENTS as f32) * std::f32::consts::FRAC_PI_2;
+            let angle2 = start_angle + ((i + 1) as f32 / SEGMENTS as f32) * std::f32::consts::FRAC_PI_2;
+            
+            let p1 = self.to_ndc(cx + radius * angle1.cos(), cy + radius * angle1.sin());
+            let p2 = self.to_ndc(cx + radius * angle2.cos(), cy + radius * angle2.sin());
+            
+            unsafe {
+                let len = self.vertices.len();
+                let ptr = self.vertices.as_mut_ptr().add(len);
+                ptr.write(Vertex { position: center, color });
+                ptr.add(1).write(Vertex { position: p1, color });
+                ptr.add(2).write(Vertex { position: p2, color });
+                self.vertices.set_len(len + 3);
+            }
+        }
+    }
+
+    #[inline]
+    fn rounded_rect_outline_fast(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: [f32; 4], thickness: f32) {
+        let half = thickness * 0.5;
         
         // Edges
         self.rect(x + radius, y - half, w - radius * 2.0, thickness, color, [0.0; 4], 0.0);
@@ -253,64 +343,43 @@ impl ShapeRenderer {
         self.rect(x + w - half, y + radius, thickness, h - radius * 2.0, color, [0.0; 4], 0.0);
         
         // Corner outlines
-        self.quarter_circle_outline(x + radius, y + radius, radius, color, thickness, 2);
-        self.quarter_circle_outline(x + w - radius, y + radius, radius, color, thickness, 3);
-        self.quarter_circle_outline(x + w - radius, y + h - radius, radius, color, thickness, 0);
-        self.quarter_circle_outline(x + radius, y + h - radius, radius, color, thickness, 1);
+        self.quarter_circle_outline_fast(x + radius, y + radius, radius, color, thickness, 2);
+        self.quarter_circle_outline_fast(x + w - radius, y + radius, radius, color, thickness, 3);
+        self.quarter_circle_outline_fast(x + w - radius, y + h - radius, radius, color, thickness, 0);
+        self.quarter_circle_outline_fast(x + radius, y + h - radius, radius, color, thickness, 1);
     }
 
+    #[inline]
+    fn quarter_circle_outline_fast(&mut self, cx: f32, cy: f32, radius: f32, color: [f32; 4], thickness: f32, quarter: u32) {
+        const SEGMENTS: usize = 8;
+        let start_angle = quarter as f32 * std::f32::consts::FRAC_PI_2;
+        let inner_radius = radius - thickness * 0.5;
+        let outer_radius = radius + thickness * 0.5;
+        
+        self.vertices.reserve(SEGMENTS * 6);
+        
+        for i in 0..SEGMENTS {
+            let angle1 = start_angle + (i as f32 / SEGMENTS as f32) * std::f32::consts::FRAC_PI_2;
+            let angle2 = start_angle + ((i + 1) as f32 / SEGMENTS as f32) * std::f32::consts::FRAC_PI_2;
+            
+            let (cos1, sin1) = (angle1.cos(), angle1.sin());
+            let (cos2, sin2) = (angle2.cos(), angle2.sin());
+            
+            let inner1 = self.to_ndc(cx + inner_radius * cos1, cy + inner_radius * sin1);
+            let inner2 = self.to_ndc(cx + inner_radius * cos2, cy + inner_radius * sin2);
+            let outer1 = self.to_ndc(cx + outer_radius * cos1, cy + outer_radius * sin1);
+            let outer2 = self.to_ndc(cx + outer_radius * cos2, cy + outer_radius * sin2);
+            
+            self.push_quad(inner1, outer1, inner2, outer2, color);
+        }
+    }
+
+    #[inline(always)]
     pub fn draw_rounded_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: [f32; 4], outline_color: [f32; 4], outline_thickness: f32) {
         self.rounded_rect(x, y, w, h, radius, color, outline_color, outline_thickness);
     }
 
-    fn quarter_circle(&mut self, cx: f32, cy: f32, radius: f32, color: [f32; 4], quarter: u32) {
-        let segments = 8;
-        let pi = std::f32::consts::PI;
-        let start_angle = quarter as f32 * pi / 2.0;
-        let center = self.to_ndc(cx, cy);
-        
-        for i in 0..segments {
-            let angle1 = start_angle + (i as f32 / segments as f32) * pi / 2.0;
-            let angle2 = start_angle + ((i + 1) as f32 / segments as f32) * pi / 2.0;
-            
-            let p1 = self.to_ndc(cx + radius * angle1.cos(), cy + radius * angle1.sin());
-            let p2 = self.to_ndc(cx + radius * angle2.cos(), cy + radius * angle2.sin());
-            
-            self.vertices.extend_from_slice(&[
-                Vertex { position: center, color },
-                Vertex { position: p1, color },
-                Vertex { position: p2, color },
-            ]);
-        }
-    }
-
-    fn quarter_circle_outline(&mut self, cx: f32, cy: f32, radius: f32, color: [f32; 4], thickness: f32, quarter: u32) {
-        let segments = 8;
-        let pi = std::f32::consts::PI;
-        let start_angle = quarter as f32 * pi / 2.0;
-        let inner_radius = radius - thickness / 2.0;
-        let outer_radius = radius + thickness / 2.0;
-        
-        for i in 0..segments {
-            let angle1 = start_angle + (i as f32 / segments as f32) * pi / 2.0;
-            let angle2 = start_angle + ((i + 1) as f32 / segments as f32) * pi / 2.0;
-            
-            let inner1 = self.to_ndc(cx + inner_radius * angle1.cos(), cy + inner_radius * angle1.sin());
-            let inner2 = self.to_ndc(cx + inner_radius * angle2.cos(), cy + inner_radius * angle2.sin());
-            let outer1 = self.to_ndc(cx + outer_radius * angle1.cos(), cy + outer_radius * angle1.sin());
-            let outer2 = self.to_ndc(cx + outer_radius * angle2.cos(), cy + outer_radius * angle2.sin());
-            
-            self.vertices.extend_from_slice(&[
-                Vertex { position: inner1, color },
-                Vertex { position: outer1, color },
-                Vertex { position: inner2, color },
-                Vertex { position: outer1, color },
-                Vertex { position: outer2, color },
-                Vertex { position: inner2, color },
-            ]);
-        }
-    }
-
+    /// Highly optimized render with minimal CPU work
     pub fn render<'pass>(
         &'pass mut self,
         device: &wgpu::Device,
@@ -324,16 +393,23 @@ impl ShapeRenderer {
         let vertex_data = bytemuck::cast_slice(&self.vertices);
         let required_size = vertex_data.len() as u64;
         
+        // Optimization: Only recreate buffer if significantly larger
         if required_size > self.vertex_buffer.size() {
+            // Grow by 1.5x to amortize reallocations
+            let new_size = (required_size * 3 / 2).max(required_size);
             self.vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Shape Vertex Buffer"),
-                size: required_size * 2,
+                size: new_size,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
+            self.vertex_capacity = (new_size / mem::size_of::<Vertex>() as u64) as usize;
         }
         
+        // Write buffer once
         queue.write_buffer(&self.vertex_buffer, 0, vertex_data);
+
+        // Single draw call for all shapes
         pass.set_pipeline(&self.pipeline);
         pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         pass.draw(0..self.vertices.len() as u32, 0..1);
@@ -342,5 +418,8 @@ impl ShapeRenderer {
     pub fn resize(&mut self, width: f32, height: f32) {
         self.screen_width = width;
         self.screen_height = height;
+        // Optimization: Update cached transform values
+        self.ndc_scale_x = 2.0 / width;
+        self.ndc_scale_y = 2.0 / height;
     }
 }
