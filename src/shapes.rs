@@ -19,13 +19,13 @@ pub struct ShapeRenderer {
 
 impl ShapeRenderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, width: f32, height: f32) -> Self {
-        // Vertex shader - converts screen coords to clip space
+        // Load shader from file
         let vertex_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shape Vertex Shader"),
+            label: Some("Shape Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/shape.wgsl").into()),
         });
 
-        // Create render pipeline
+        // Create render pipeline with MSAA
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Shape Pipeline"),
             layout: None,
@@ -65,14 +65,18 @@ impl ShapeRenderer {
                 ..Default::default()
             },
             depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
+            multisample: wgpu::MultisampleState {
+                count: 4, // 4x MSAA
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
             multiview: None,
         });
 
         // Create initial vertex buffer
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Shape Vertex Buffer"),
-            size: 1024 * std::mem::size_of::<Vertex>() as u64, // Initial size
+            size: 1024 * std::mem::size_of::<Vertex>() as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -119,6 +123,18 @@ impl ShapeRenderer {
         ]);
     }
 
+    /// Draw a rectangle outline
+    pub fn rect_outline(&mut self, x: f32, y: f32, w: f32, h: f32, thickness: f32, color: [f32; 4]) {
+        // Top edge
+        self.rect(x, y, w, thickness, color);
+        // Bottom edge
+        self.rect(x, y + h - thickness, w, thickness, color);
+        // Left edge
+        self.rect(x, y + thickness, thickness, h - thickness * 2.0, color);
+        // Right edge
+        self.rect(x + w - thickness, y + thickness, thickness, h - thickness * 2.0, color);
+    }
+
     /// Draw a filled circle
     pub fn circle(&mut self, cx: f32, cy: f32, radius: f32, color: [f32; 4]) {
         let segments = 32;
@@ -141,6 +157,38 @@ impl ShapeRenderer {
         }
     }
 
+    /// Draw a circle outline (ring)
+    pub fn circle_outline(&mut self, cx: f32, cy: f32, radius: f32, thickness: f32, color: [f32; 4]) {
+        let segments = 32;
+        let pi = std::f32::consts::PI;
+        let inner_radius = (radius - thickness).max(0.0);
+        
+        for i in 0..segments {
+            let angle1 = (i as f32 / segments as f32) * 2.0 * pi;
+            let angle2 = ((i + 1) as f32 / segments as f32) * 2.0 * pi;
+            
+            // Outer ring points
+            let outer1 = self.to_ndc(cx + radius * angle1.cos(), cy + radius * angle1.sin());
+            let outer2 = self.to_ndc(cx + radius * angle2.cos(), cy + radius * angle2.sin());
+            
+            // Inner ring points
+            let inner1 = self.to_ndc(cx + inner_radius * angle1.cos(), cy + inner_radius * angle1.sin());
+            let inner2 = self.to_ndc(cx + inner_radius * angle2.cos(), cy + inner_radius * angle2.sin());
+            
+            // Two triangles forming a segment of the ring
+            self.vertices.extend_from_slice(&[
+                // Triangle 1
+                Vertex { position: outer1, color },
+                Vertex { position: outer2, color },
+                Vertex { position: inner1, color },
+                // Triangle 2
+                Vertex { position: outer2, color },
+                Vertex { position: inner2, color },
+                Vertex { position: inner1, color },
+            ]);
+        }
+    }
+
     /// Draw a rounded rectangle
     pub fn rounded_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: [f32; 4]) {
         let radius = radius.min(w / 2.0).min(h / 2.0);
@@ -157,6 +205,26 @@ impl ShapeRenderer {
         self.quarter_circle(x + w - radius, y + radius, radius, color, 3); // Top-right
         self.quarter_circle(x + w - radius, y + h - radius, radius, color, 0); // Bottom-right
         self.quarter_circle(x + radius, y + h - radius, radius, color, 1); // Bottom-left
+    }
+
+    /// Draw a rounded rectangle outline
+    pub fn rounded_rect_outline(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, thickness: f32, color: [f32; 4]) {
+        let radius = radius.min(w / 2.0).min(h / 2.0);
+        
+        // Top edge
+        self.rect(x + radius, y, w - radius * 2.0, thickness, color);
+        // Bottom edge
+        self.rect(x + radius, y + h - thickness, w - radius * 2.0, thickness, color);
+        // Left edge
+        self.rect(x, y + radius, thickness, h - radius * 2.0, color);
+        // Right edge
+        self.rect(x + w - thickness, y + radius, thickness, h - radius * 2.0, color);
+        
+        // Four corner rings
+        self.quarter_circle_outline(x + radius, y + radius, radius, thickness, color, 2); // Top-left
+        self.quarter_circle_outline(x + w - radius, y + radius, radius, thickness, color, 3); // Top-right
+        self.quarter_circle_outline(x + w - radius, y + h - radius, radius, thickness, color, 0); // Bottom-right
+        self.quarter_circle_outline(x + radius, y + h - radius, radius, thickness, color, 1); // Bottom-left
     }
 
     /// Draw a quarter circle (for rounded corners)
@@ -182,6 +250,39 @@ impl ShapeRenderer {
         }
     }
 
+    /// Draw a quarter circle outline (ring segment)
+    fn quarter_circle_outline(&mut self, cx: f32, cy: f32, radius: f32, thickness: f32, color: [f32; 4], quarter: u32) {
+        let segments = 8;
+        let pi = std::f32::consts::PI;
+        let start_angle = quarter as f32 * pi / 2.0;
+        let inner_radius = (radius - thickness).max(0.0);
+        
+        for i in 0..segments {
+            let angle1 = start_angle + (i as f32 / segments as f32) * pi / 2.0;
+            let angle2 = start_angle + ((i + 1) as f32 / segments as f32) * pi / 2.0;
+            
+            // Outer arc points
+            let outer1 = self.to_ndc(cx + radius * angle1.cos(), cy + radius * angle1.sin());
+            let outer2 = self.to_ndc(cx + radius * angle2.cos(), cy + radius * angle2.sin());
+            
+            // Inner arc points
+            let inner1 = self.to_ndc(cx + inner_radius * angle1.cos(), cy + inner_radius * angle1.sin());
+            let inner2 = self.to_ndc(cx + inner_radius * angle2.cos(), cy + inner_radius * angle2.sin());
+            
+            // Two triangles forming a segment of the ring
+            self.vertices.extend_from_slice(&[
+                // Triangle 1
+                Vertex { position: outer1, color },
+                Vertex { position: outer2, color },
+                Vertex { position: inner1, color },
+                // Triangle 2
+                Vertex { position: outer2, color },
+                Vertex { position: inner2, color },
+                Vertex { position: inner1, color },
+            ]);
+        }
+    }
+
     /// Render all queued shapes
     pub fn render<'pass>(
         &'pass mut self,
@@ -201,7 +302,7 @@ impl ShapeRenderer {
         if required_size > self.vertex_buffer.size() {
             self.vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Shape Vertex Buffer"),
-                size: required_size * 2, // Double size to reduce reallocations
+                size: required_size * 2,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });

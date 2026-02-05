@@ -1,0 +1,281 @@
+// src/text.rs
+
+use glyphon::{
+    FontSystem, SwashCache, TextAtlas, TextRenderer as GlyphonRenderer,
+    Attrs, Family, Shaping, Buffer, Metrics, TextArea, Resolution, Color,
+};
+use wgpu;
+
+pub struct TextRenderer {
+    font_system: FontSystem,
+    swash_cache: SwashCache,
+    atlas: TextAtlas,
+    renderer: GlyphonRenderer,
+    text_buffers: Vec<(Buffer, f32, f32, f32, Color)>, // Buffer, x, y, scale_factor, color
+    screen_width: f32,
+    screen_height: f32,
+    scale_factor: f64,
+}
+
+impl TextRenderer {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+    ) -> Self {
+        let mut font_system = FontSystem::new();
+        
+        let swash_cache = SwashCache::new();
+        let mut atlas = TextAtlas::new(device, queue, format);
+        let renderer = GlyphonRenderer::new(
+            &mut atlas,
+            device,
+            wgpu::MultisampleState {
+                count: 4, // Enable 4x MSAA to match the app
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            None,
+        );
+
+        Self {
+            font_system,
+            swash_cache,
+            atlas,
+            renderer,
+            text_buffers: Vec::new(),
+            screen_width: 800.0,
+            screen_height: 600.0,
+            scale_factor: 1.0,
+        }
+    }
+
+    /// Measure text dimensions without rendering
+    pub fn measure_text(&mut self, text: &str, font_size: f32) -> (f32, f32) {
+        let scale = self.scale_factor as f32;
+        let scaled_font_size = font_size * scale;
+        let line_height = scaled_font_size * 1.6;
+        
+        let mut buffer = Buffer::new(
+            &mut self.font_system,
+            Metrics::new(scaled_font_size, line_height),
+        );
+        
+        buffer.set_size(&mut self.font_system, f32::MAX, f32::MAX);
+        
+        buffer.set_text(
+            &mut self.font_system,
+            text,
+            Attrs::new().family(Family::Name("ZedMono Nerd Font")),
+            Shaping::Advanced,
+        );
+        
+        buffer.shape_until_scroll(&mut self.font_system);
+        
+        // Measure the laid out text
+        let mut max_width = 0.0f32;
+        let mut max_y = 0.0f32;
+        
+        for run in buffer.layout_runs() {
+            // Calculate line width from glyphs
+            let mut line_width = 0.0f32;
+            for glyph in run.glyphs.iter() {
+                line_width = line_width.max(glyph.x + glyph.w);
+            }
+            max_width = max_width.max(line_width);
+            max_y = max_y.max(run.line_y);
+        }
+        
+        // Return in logical coordinates
+        (max_width / scale, (max_y + line_height) / scale)
+    }
+
+    /// Update screen dimensions and scale factor
+    pub fn resize(&mut self, width: f32, height: f32, scale_factor: f64) {
+        self.screen_width = width;
+        self.screen_height = height;
+        self.scale_factor = scale_factor;
+    }
+
+    /// Simple API: just draw text at x, y with default color (white)
+    pub fn draw(&mut self, text: &str, x: f32, y: f32) {
+        self.queue_text(
+            text, 
+            x, 
+            y, 
+            self.screen_width, 
+            self.screen_height, 
+            self.scale_factor, 
+            22.0,
+            [1.0, 1.0, 1.0, 1.0],
+        );
+    }
+
+    /// Simple API with custom font size and default color (white)
+    pub fn draw_sized(&mut self, text: &str, x: f32, y: f32, font_size: f32) {
+        self.queue_text(
+            text, 
+            x, 
+            y, 
+            self.screen_width, 
+            self.screen_height, 
+            self.scale_factor, 
+            font_size,
+            [1.0, 1.0, 1.0, 1.0],
+        );
+    }
+
+    /// Draw text with custom size and color
+    pub fn draw_colored(&mut self, text: &str, x: f32, y: f32, font_size: f32, color: [f32; 4]) {
+        self.queue_text(
+            text, 
+            x, 
+            y, 
+            self.screen_width, 
+            self.screen_height, 
+            self.scale_factor, 
+            font_size,
+            color,
+        );
+    }
+
+    /// Queue text to be drawn (doesn't render yet)
+    pub fn queue_text(
+        &mut self,
+        text: &str,
+        x: f32,
+        y: f32,
+        screen_width: f32,
+        screen_height: f32,
+        scale_factor: f64,
+        font_size: f32,
+        color: [f32; 4],
+    ) {
+        let scale = scale_factor as f32;
+        
+        // Scale font metrics by DPI for consistent visual size
+        let scaled_font_size = font_size * scale;
+        let line_height = scaled_font_size * 1.6; // 1.6x font size for line height
+        
+        let mut buffer = Buffer::new(
+            &mut self.font_system,
+            Metrics::new(scaled_font_size, line_height),
+        );
+
+        // Set buffer size to remaining screen space from position
+        let available_width = (screen_width - x).max(100.0); // At least 100px
+        let available_height = (screen_height - y).max(50.0); // At least 50px
+        buffer.set_size(&mut self.font_system, available_width, available_height);
+        
+        // Set text with proper wrapping
+        buffer.set_text(
+            &mut self.font_system,
+            text,
+            Attrs::new().family(Family::Name("ZedMono Nerd Font")),
+            Shaping::Advanced,
+        );
+        
+        // Important: shape the lines so glyphon knows where line breaks are
+        buffer.shape_until_scroll(&mut self.font_system);
+
+        // Convert color to glyphon Color
+        let text_color = Color::rgba(
+            (color[0] * 255.0) as u8,
+            (color[1] * 255.0) as u8,
+            (color[2] * 255.0) as u8,
+            (color[3] * 255.0) as u8,
+        );
+
+        // Store with scale factor and color for rendering
+        self.text_buffers.push((buffer, x, y, scale, text_color));
+    }
+
+    /// Render all queued text
+    pub fn render<'pass>(
+        &'pass mut self,
+        screen_width: f32,
+        screen_height: f32,
+        scale_factor: f64,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        pass: &mut wgpu::RenderPass<'pass>,
+    ) {
+        if self.text_buffers.is_empty() {
+            return;
+        }
+
+        // Calculate physical resolution for crisp rendering
+        let physical_width = (screen_width * scale_factor as f32) as u32;
+        let physical_height = (screen_height * scale_factor as f32) as u32;
+
+        // Convert logical coordinates to physical for positioning
+        let text_areas: Vec<TextArea> = self.text_buffers
+            .iter()
+            .map(|(buffer, x, y, stored_scale, color)| TextArea {
+                buffer,
+                left: x * stored_scale, // Convert to physical coordinates
+                top: y * stored_scale,  // Convert to physical coordinates
+                scale: 1.0,
+                bounds: glyphon::TextBounds {
+                    left: 0,
+                    top: 0,
+                    right: physical_width as i32,  // Physical bounds
+                    bottom: physical_height as i32, // Physical bounds
+                },
+                default_color: *color,
+            })
+            .collect();
+
+        // Prepare for rendering with PHYSICAL resolution (for crisp text)
+        self.renderer
+            .prepare(
+                device,
+                queue,
+                &mut self.font_system,
+                &mut self.atlas,
+                Resolution {
+                    width: physical_width,
+                    height: physical_height,
+                },
+                text_areas,
+                &mut self.swash_cache,
+            )
+            .unwrap();
+
+        // Render all text
+        self.renderer.render(&self.atlas, pass).unwrap();
+    }
+
+    /// Clear all queued text
+    pub fn clear(&mut self) {
+        self.text_buffers.clear();
+    }
+
+    /// Legacy method for compatibility - queues and renders immediately
+    pub fn draw_text<'pass>(
+        &'pass mut self,
+        text: &str,
+        x: f32,
+        y: f32,
+        screen_width: f32,
+        screen_height: f32,
+        scale_factor: f64,
+        font_size: f32,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        pass: &mut wgpu::RenderPass<'pass>,
+    ) {
+        self.clear();
+        self.queue_text(
+            text, 
+            x, 
+            y, 
+            screen_width, 
+            screen_height, 
+            scale_factor, 
+            font_size,
+            [1.0, 1.0, 1.0, 1.0],
+        );
+        self.render(screen_width, screen_height, scale_factor, device, queue, pass);
+    }
+}
