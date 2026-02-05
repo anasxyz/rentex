@@ -445,14 +445,14 @@ impl App {
         // Process each command in the scene
         for cmd in scene.commands() {
             match cmd {
-                DrawCommand::Rect { x, y, w, h, color } => {
-                    shape_renderer.rect(*x, *y, *w, *h, *color);
+                DrawCommand::Rect { x, y, w, h, color, outline_color, outline_thickness } => {
+                    shape_renderer.rect(*x, *y, *w, *h, *color, *outline_color, *outline_thickness);
                 }
-                DrawCommand::Circle { cx, cy, radius, color } => {
-                    shape_renderer.circle(*cx, *cy, *radius, *color);
+                DrawCommand::Circle { cx, cy, radius, color, outline_color, outline_thickness } => {
+                    shape_renderer.circle(*cx, *cy, *radius, *color, *outline_color, *outline_thickness);
                 }
-                DrawCommand::RoundedRect { x, y, w, h, radius, color } => {
-                    shape_renderer.rounded_rect(*x, *y, *w, *h, *radius, *color);
+                DrawCommand::RoundedRect { x, y, w, h, radius, color, outline_color, outline_thickness } => {
+                    shape_renderer.rounded_rect(*x, *y, *w, *h, *radius, *color, *outline_color, *outline_thickness);
                 }
                 DrawCommand::Text { text, x, y } => {
                     text_renderer.queue_text(

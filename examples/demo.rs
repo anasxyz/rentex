@@ -11,13 +11,13 @@ fn main() {
         canvas.scene.clear();
         
         // Draw a red rectangle
-        canvas.scene.rect(50.0, 50.0, 200.0, 100.0, [1.0, 0.0, 0.0, 1.0]);
+        canvas.scene.rect(50.0, 50.0, 200.0, 100.0, [1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0], 10.0);
         
         // Draw a green circle
-        canvas.scene.circle(400.0, 150.0, 50.0, [0.0, 1.0, 0.0, 1.0]);
+        canvas.scene.circle(400.0, 150.0, 50.0, [0.0, 1.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0], 2.0);
         
         // Draw a blue rounded button
-        canvas.scene.rounded_rect(50.0, 200.0, 200.0, 60.0, 8.0, [0.2, 0.4, 0.8, 1.0]);
+        canvas.scene.rounded_rect(50.0, 200.0, 200.0, 60.0, 8.0, [0.2, 0.4, 0.8, 1.0], [0.0, 0.0, 0.0, 1.0], 2.0);
         
         // Add some text
         canvas.scene.text("Hello, Retained Mode!", 300.0, 220.0);
