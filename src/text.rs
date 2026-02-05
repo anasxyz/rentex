@@ -2,7 +2,7 @@
 
 use glyphon::{
     FontSystem, SwashCache, TextAtlas, TextRenderer as GlyphonRenderer,
-    Attrs, Family, Shaping, Buffer, Metrics, TextArea, Resolution,
+    Attrs, Family, Shaping, Buffer, Metrics, TextArea, Resolution, Color,
 };
 use wgpu;
 
@@ -11,7 +11,7 @@ pub struct TextRenderer {
     swash_cache: SwashCache,
     atlas: TextAtlas,
     renderer: GlyphonRenderer,
-    text_buffers: Vec<(Buffer, f32, f32, f32)>, // Buffer, x, y, scale_factor
+    text_buffers: Vec<(Buffer, f32, f32, f32, Color)>, // Buffer, x, y, scale_factor, color
     screen_width: f32,
     screen_height: f32,
     scale_factor: f64,
@@ -97,14 +97,46 @@ impl TextRenderer {
         self.scale_factor = scale_factor;
     }
 
-    /// Simple API: just draw text at x, y
+    /// Simple API: just draw text at x, y with default color (white)
     pub fn draw(&mut self, text: &str, x: f32, y: f32) {
-        self.queue_text(text, x, y, self.screen_width, self.screen_height, self.scale_factor, 22.0);
+        self.queue_text(
+            text, 
+            x, 
+            y, 
+            self.screen_width, 
+            self.screen_height, 
+            self.scale_factor, 
+            22.0,
+            [1.0, 1.0, 1.0, 1.0],
+        );
     }
 
-    /// Simple API with custom font size
+    /// Simple API with custom font size and default color (white)
     pub fn draw_sized(&mut self, text: &str, x: f32, y: f32, font_size: f32) {
-        self.queue_text(text, x, y, self.screen_width, self.screen_height, self.scale_factor, font_size);
+        self.queue_text(
+            text, 
+            x, 
+            y, 
+            self.screen_width, 
+            self.screen_height, 
+            self.scale_factor, 
+            font_size,
+            [1.0, 1.0, 1.0, 1.0],
+        );
+    }
+
+    /// Draw text with custom size and color
+    pub fn draw_colored(&mut self, text: &str, x: f32, y: f32, font_size: f32, color: [f32; 4]) {
+        self.queue_text(
+            text, 
+            x, 
+            y, 
+            self.screen_width, 
+            self.screen_height, 
+            self.scale_factor, 
+            font_size,
+            color,
+        );
     }
 
     /// Queue text to be drawn (doesn't render yet)
@@ -117,6 +149,7 @@ impl TextRenderer {
         screen_height: f32,
         scale_factor: f64,
         font_size: f32,
+        color: [f32; 4],
     ) {
         let scale = scale_factor as f32;
         
@@ -145,8 +178,16 @@ impl TextRenderer {
         // Important: shape the lines so glyphon knows where line breaks are
         buffer.shape_until_scroll(&mut self.font_system);
 
-        // Store with scale factor for rendering
-        self.text_buffers.push((buffer, x, y, scale));
+        // Convert color to glyphon Color
+        let text_color = Color::rgba(
+            (color[0] * 255.0) as u8,
+            (color[1] * 255.0) as u8,
+            (color[2] * 255.0) as u8,
+            (color[3] * 255.0) as u8,
+        );
+
+        // Store with scale factor and color for rendering
+        self.text_buffers.push((buffer, x, y, scale, text_color));
     }
 
     /// Render all queued text
@@ -170,7 +211,7 @@ impl TextRenderer {
         // Convert logical coordinates to physical for positioning
         let text_areas: Vec<TextArea> = self.text_buffers
             .iter()
-            .map(|(buffer, x, y, stored_scale)| TextArea {
+            .map(|(buffer, x, y, stored_scale, color)| TextArea {
                 buffer,
                 left: x * stored_scale, // Convert to physical coordinates
                 top: y * stored_scale,  // Convert to physical coordinates
@@ -181,7 +222,7 @@ impl TextRenderer {
                     right: physical_width as i32,  // Physical bounds
                     bottom: physical_height as i32, // Physical bounds
                 },
-                default_color: glyphon::Color::rgb(255, 255, 255),
+                default_color: *color,
             })
             .collect();
 
@@ -225,7 +266,16 @@ impl TextRenderer {
         pass: &mut wgpu::RenderPass<'pass>,
     ) {
         self.clear();
-        self.queue_text(text, x, y, screen_width, screen_height, scale_factor, font_size);
+        self.queue_text(
+            text, 
+            x, 
+            y, 
+            screen_width, 
+            screen_height, 
+            scale_factor, 
+            font_size,
+            [1.0, 1.0, 1.0, 1.0],
+        );
         self.render(screen_width, screen_height, scale_factor, device, queue, pass);
     }
 }

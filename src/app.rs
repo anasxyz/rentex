@@ -3,12 +3,12 @@
 use std::sync::Arc;
 use wgpu;
 use winit::{
-    event::{Event, WindowEvent},
+    event::{Event, WindowEvent, ElementState, MouseButton as WinitMouseButton},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
 
-use crate::{ShapeRenderer, TextRenderer, Scene, WidgetRenderer};
+use crate::{ShapeRenderer, TextRenderer, Scene, WidgetRenderer, InputState, InteractionManager, MouseButton};
 
 pub struct App {
     event_loop: Option<EventLoop<()>>,
@@ -28,6 +28,7 @@ pub struct Rntx<'a> {
     pub shapes: &'a mut ShapeRenderer,
     pub text: &'a mut TextRenderer,
     pub widgets: &'a mut WidgetRenderer,
+    pub input: &'a InputState,
     pub width: f32,
     pub height: f32,
     pub scale_factor: f64,
@@ -147,8 +148,22 @@ impl App {
         );
         
         let mut widget_renderer = WidgetRenderer::new();
-
         let mut scene = Scene::new();
+        let mut input_state = InputState::new();
+        let mut interaction_manager = InteractionManager::new();
+
+        // Helper to check if mouse is hovering over any button
+        let check_hover = |commands: &[crate::DrawCommand], pos: (f32, f32)| -> bool {
+            let (px, py) = pos;
+            for cmd in commands {
+                if let crate::DrawCommand::Button { x, y, w, h, .. } = cmd {
+                    if px >= *x && px <= x + w && py >= *y && py <= y + h {
+                        return true;
+                    }
+                }
+            }
+            false
+        };
 
         let event_loop = self.event_loop.take().unwrap();
 
@@ -160,6 +175,42 @@ impl App {
                     event,
                     window_id,
                 } if window_id == self.window.id() => match event {
+                    WindowEvent::CursorMoved { position, .. } => {
+                        // Convert physical position to logical coordinates
+                        let logical_x = position.x as f64 / self.scale_factor;
+                        let logical_y = position.y as f64 / self.scale_factor;
+                        
+                        let old_pos = input_state.mouse_position;
+                        input_state.update_mouse_position(logical_x as f32, logical_y as f32);
+                        let new_pos = input_state.mouse_position;
+                        
+                        // Only redraw if hover state changed (entered or exited a button)
+                        let old_hovered = check_hover(scene.commands(), old_pos);
+                        let new_hovered = check_hover(scene.commands(), new_pos);
+                        
+                        if old_hovered != new_hovered {
+                            self.window.request_redraw();
+                        }
+                    }
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        let mouse_button = match button {
+                            WinitMouseButton::Left => MouseButton::Left,
+                            WinitMouseButton::Right => MouseButton::Right,
+                            WinitMouseButton::Middle => MouseButton::Middle,
+                            _ => return,
+                        };
+
+                        match state {
+                            ElementState::Pressed => {
+                                input_state.press_mouse_button(mouse_button);
+                            }
+                            ElementState::Released => {
+                                input_state.release_mouse_button(mouse_button);
+                            }
+                        }
+                        
+                        self.window.request_redraw();
+                    }
                     WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                         self.scale_factor = scale_factor;
                         let physical_size = self.window.inner_size();
@@ -207,20 +258,24 @@ impl App {
                         self.window.request_redraw();
                     }
                     WindowEvent::RedrawRequested => {
-                        // Only call update_fn if scene is dirty
+                        // Only rebuild scene if dirty (retained mode)
                         if scene.is_dirty() {
-                            scene.clear(); // Always start fresh
+                            scene.clear();
                             let mut rntx = Rntx {
                                 scene: &mut scene,
                                 shapes: &mut shape_renderer,
                                 text: &mut text_renderer,
                                 widgets: &mut widget_renderer,
+                                input: &input_state,
                                 width: (self.config.width as f64 / self.scale_factor) as f32,
                                 height: (self.config.height as f64 / self.scale_factor) as f32,
                                 scale_factor: self.scale_factor,
                             };
                             update_fn(&mut rntx);
                         }
+
+                        // Always process interactions (even if scene not dirty)
+                        interaction_manager.process_interactions(scene.commands(), &input_state);
 
                         // Render the scene
                         let frame = self.surface.get_current_texture().unwrap();
@@ -253,18 +308,33 @@ impl App {
                             text_renderer.clear();
                             
                             // Process all commands
-                            for cmd in scene.commands() {
+                            for (idx, cmd) in scene.commands().iter().enumerate() {
                                 match cmd {
-                                    crate::DrawCommand::Rect { x, y, w, h, color } => {
+                                    crate::DrawCommand::Rect { x, y, w, h, color, outline_color, outline_width } => {
                                         shape_renderer.rect(*x, *y, *w, *h, *color);
+                                        if let Some(outline) = outline_color {
+                                            if *outline_width > 0.0 {
+                                                shape_renderer.rect_outline(*x, *y, *w, *h, *outline_width, *outline);
+                                            }
+                                        }
                                     }
-                                    crate::DrawCommand::Circle { cx, cy, radius, color } => {
+                                    crate::DrawCommand::Circle { cx, cy, radius, color, outline_color, outline_width } => {
                                         shape_renderer.circle(*cx, *cy, *radius, *color);
+                                        if let Some(outline) = outline_color {
+                                            if *outline_width > 0.0 {
+                                                shape_renderer.circle_outline(*cx, *cy, *radius, *outline_width, *outline);
+                                            }
+                                        }
                                     }
-                                    crate::DrawCommand::RoundedRect { x, y, w, h, radius, color } => {
+                                    crate::DrawCommand::RoundedRect { x, y, w, h, radius, color, outline_color, outline_width } => {
                                         shape_renderer.rounded_rect(*x, *y, *w, *h, *radius, *color);
+                                        if let Some(outline) = outline_color {
+                                            if *outline_width > 0.0 {
+                                                shape_renderer.rounded_rect_outline(*x, *y, *w, *h, *radius, *outline_width, *outline);
+                                            }
+                                        }
                                     }
-                                    crate::DrawCommand::Text { text, x, y, font_size } => {
+                                    crate::DrawCommand::Text { text, x, y, font_size, color } => {
                                         text_renderer.queue_text(
                                             text,
                                             *x,
@@ -273,10 +343,64 @@ impl App {
                                             (self.config.height as f64 / self.scale_factor) as f32,
                                             self.scale_factor,
                                             *font_size,
+                                            *color,
                                         );
                                     }
-                                    crate::DrawCommand::Button { x, y, w, h, text } => {
-                                        widget_renderer.button(*x, *y, *w, *h, text, &mut shape_renderer, &mut text_renderer);
+                                    crate::DrawCommand::Button { 
+                                        x, y, w, h, text, fill_color, text_color, 
+                                        outline_color, outline_width, hover_color, ..
+                                    } => {
+                                        // Use hover color if this button is being hovered
+                                        let current_color = if interaction_manager.is_hovered(idx) {
+                                            hover_color.unwrap_or(*fill_color)
+                                        } else {
+                                            *fill_color
+                                        };
+
+                                        // Draw button background
+                                        shape_renderer.rounded_rect(*x, *y, *w, *h, 8.0, current_color);
+                                        
+                                        // Draw outline if specified
+                                        if let Some(outline) = outline_color {
+                                            if *outline_width > 0.0 {
+                                                shape_renderer.rounded_rect_outline(*x, *y, *w, *h, 8.0, *outline_width, *outline);
+                                            }
+                                        }
+                                        
+                                        // Measure and center text
+                                        let base_font_size = 22.0;
+                                        let available_width = w - 5.0;
+                                        let available_height = h - 10.0;
+                                        
+                                        let (text_width, _) = text_renderer.measure_text(text, base_font_size);
+                                        
+                                        let scale_w = if text_width > available_width { 
+                                            available_width / text_width 
+                                        } else { 
+                                            1.0 
+                                        };
+                                        let scale_h = if base_font_size > available_height { 
+                                            available_height / base_font_size 
+                                        } else { 
+                                            1.0 
+                                        };
+                                        let font_size = base_font_size * scale_w.min(scale_h);
+                                        
+                                        let (final_w, _) = text_renderer.measure_text(text, font_size);
+                                        
+                                        let text_x = x + (w - final_w) / 2.0;
+                                        let text_y = y + h / 2.0 - font_size * 0.69;
+                                        
+                                        text_renderer.queue_text(
+                                            text,
+                                            text_x,
+                                            text_y,
+                                            (self.config.width as f64 / self.scale_factor) as f32,
+                                            (self.config.height as f64 / self.scale_factor) as f32,
+                                            self.scale_factor,
+                                            font_size,
+                                            *text_color,
+                                        );
                                     }
                                 }
                             }
@@ -299,6 +423,9 @@ impl App {
                         frame.present();
                         
                         scene.mark_clean();
+                        
+                        // Clear per-frame input state after processing
+                        input_state.begin_frame();
                     }
                     WindowEvent::CloseRequested => {
                         target.exit();
