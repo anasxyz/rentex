@@ -29,7 +29,7 @@ impl ShapeRenderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, width: f32, height: f32) -> Self {
         let vertex_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shape Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/shape.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/shape.wgsl").into()),
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

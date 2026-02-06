@@ -1,15 +1,15 @@
-// src/app.rs - Using Canvas from canvas module
+#[allow(dead_code, unused)]
 
 use std::sync::Arc;
 use winit::{
-    event::{Event, WindowEvent, ElementState, MouseButton},
+    event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
 
-use crate::{GpuContext, ShapeRenderer, TextRenderer, Scene, DrawCommand, Canvas, MouseState};
+use crate::{GpuContext, MouseState, ShapeRenderer, TextRenderer};
 
-/// The main application
+/// main application
 pub struct App {
     event_loop: Option<EventLoop<()>>,
     window: Arc<Window>,
@@ -18,7 +18,7 @@ pub struct App {
 }
 
 impl App {
-    /// Create a new application
+    /// create a new application
     pub fn new(title: &str, width: u32, height: u32) -> Self {
         pollster::block_on(Self::new_async(title, width, height))
     }
@@ -44,7 +44,7 @@ impl App {
         }
     }
 
-    /// Get window size in logical coordinates
+    /// get window size in logical coordinates
     #[inline(always)]
     fn logical_size(&self) -> (f32, f32) {
         (
@@ -53,18 +53,19 @@ impl App {
         )
     }
 
-    /// Run the application with a user update function
+    /// run the application with a user update function
     pub fn run<F>(mut self, mut update_fn: F)
     where
-        F: FnMut(&mut Canvas) + 'static,
+        F: FnMut() + 'static,
     {
-        // Create renderers
+        // create renderers
         let (width, height) = self.logical_size();
-        let mut shape_renderer = ShapeRenderer::new(&self.gpu.device, self.gpu.format, width, height);
-        let mut text_renderer = TextRenderer::new(&self.gpu.device, &self.gpu.queue, self.gpu.format);
+        let mut shape_renderer =
+            ShapeRenderer::new(&self.gpu.device, self.gpu.format, width, height);
+        let mut text_renderer =
+            TextRenderer::new(&self.gpu.device, &self.gpu.queue, self.gpu.format);
         text_renderer.resize(width, height, self.scale_factor);
-        
-        let mut scene = Scene::new();
+
         let mut mouse = MouseState::default();
         let event_loop = self.event_loop.take().unwrap();
 
@@ -77,7 +78,6 @@ impl App {
                         WindowEvent::CursorMoved { position, .. } => {
                             mouse.x = (position.x / self.scale_factor) as f32;
                             mouse.y = (position.y / self.scale_factor) as f32;
-                            scene.mark_dirty();
                             self.window.request_redraw();
                         }
                         WindowEvent::MouseInput { state, button, .. } => {
@@ -93,7 +93,6 @@ impl App {
                                 }
                                 _ => {}
                             }
-                            scene.mark_dirty();
                             self.window.request_redraw();
                         }
                         WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
@@ -101,22 +100,15 @@ impl App {
                                 scale_factor,
                                 &mut shape_renderer,
                                 &mut text_renderer,
-                                &mut scene,
                             );
                         }
                         WindowEvent::Resized(new_size) => {
-                            self.on_resize(
-                                new_size,
-                                &mut shape_renderer,
-                                &mut text_renderer,
-                                &mut scene,
-                            );
+                            self.on_resize(new_size, &mut shape_renderer, &mut text_renderer);
                         }
                         WindowEvent::RedrawRequested => {
                             self.on_redraw(
                                 &mut shape_renderer,
                                 &mut text_renderer,
-                                &mut scene,
                                 &mut mouse,
                                 &mut update_fn,
                             );
@@ -137,18 +129,16 @@ impl App {
         scale_factor: f64,
         shape_renderer: &mut ShapeRenderer,
         text_renderer: &mut TextRenderer,
-        scene: &mut Scene,
     ) {
         self.scale_factor = scale_factor;
-        
+
         let physical_size = self.window.inner_size();
         self.gpu.resize(physical_size.width, physical_size.height);
 
         let (width, height) = self.logical_size();
         shape_renderer.resize(width, height);
         text_renderer.resize(width, height, self.scale_factor);
-        
-        scene.mark_dirty();
+
         self.window.request_redraw();
     }
 
@@ -157,15 +147,13 @@ impl App {
         new_size: winit::dpi::PhysicalSize<u32>,
         shape_renderer: &mut ShapeRenderer,
         text_renderer: &mut TextRenderer,
-        scene: &mut Scene,
     ) {
         self.gpu.resize(new_size.width, new_size.height);
 
         let (width, height) = self.logical_size();
         shape_renderer.resize(width, height);
         text_renderer.resize(width, height, self.scale_factor);
-        
-        scene.mark_dirty();
+
         self.window.request_redraw();
     }
 
@@ -173,29 +161,16 @@ impl App {
         &mut self,
         shape_renderer: &mut ShapeRenderer,
         text_renderer: &mut TextRenderer,
-        scene: &mut Scene,
         mouse: &mut MouseState,
         update_fn: &mut F,
     ) where
-        F: FnMut(&mut Canvas),
+        F: FnMut(),
     {
-        if scene.is_dirty() {
-            scene.clear();
-            
-            let (width, height) = self.logical_size();
-            let mut canvas = Canvas {
-                scene,
-                width,
-                height,
-                scale_factor: self.scale_factor,
-                mouse: *mouse,
-            };
-            
-            update_fn(&mut canvas);
-        }
+        println!("redrawing");
 
-        mouse.left_just_pressed = false;
-        mouse.left_just_released = false;
+        let (width, height) = self.logical_size();
+
+        update_fn();
 
         let frame = match self.gpu.begin_frame() {
             Ok(frame) => frame,
@@ -222,31 +197,20 @@ impl App {
 
             shape_renderer.clear();
             text_renderer.clear();
-            
+
             let (width, height) = self.logical_size();
-            
-            for cmd in scene.commands() {
-                match cmd {
-                    DrawCommand::Rect { x, y, w, h, color, outline_color, outline_thickness } => {
-                        shape_renderer.rect(*x, *y, *w, *h, *color, *outline_color, *outline_thickness);
-                    }
-                    DrawCommand::Circle { cx, cy, radius, color, outline_color, outline_thickness } => {
-                        shape_renderer.circle(*cx, *cy, *radius, *color, *outline_color, *outline_thickness);
-                    }
-                    DrawCommand::RoundedRect { x, y, w, h, radius, color, outline_color, outline_thickness } => {
-                        shape_renderer.rounded_rect(*x, *y, *w, *h, *radius, *color, *outline_color, *outline_thickness);
-                    }
-                    DrawCommand::Text { text, x, y } => {
-                        text_renderer.queue_text(text, *x, *y, width, height, self.scale_factor);
-                    }
-                }
-            }
 
             shape_renderer.render(&self.gpu.device, &self.gpu.queue, &mut pass);
-            text_renderer.render(width, height, self.scale_factor, &self.gpu.device, &self.gpu.queue, &mut pass);
+            text_renderer.render(
+                width,
+                height,
+                self.scale_factor,
+                &self.gpu.device,
+                &self.gpu.queue,
+                &mut pass,
+            );
         }
 
         finisher.present(encoder, &self.gpu.queue);
-        scene.mark_clean();
     }
 }

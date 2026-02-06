@@ -1,15 +1,15 @@
-// src/lib.rs
+mod render {
+    pub mod gpu;
+    pub mod shape_renderer;
+    pub mod text_renderer;
+}
 
-mod gpu;
-mod shapes;
-mod text;
+pub use render::gpu::{FrameFinisher, GpuContext, RenderFrame};
+pub use render::shape_renderer::ShapeRenderer;
+pub use render::text_renderer::TextRenderer;
+
 mod app;
-mod scene;
-mod canvas;
+mod mouse;
 
-pub use gpu::{GpuContext, RenderFrame, FrameFinisher};
-pub use shapes::ShapeRenderer;
-pub use text::TextRenderer;
 pub use app::App;
-pub use canvas::{Canvas, MouseState};
-pub use scene::{Scene, DrawCommand};
+pub use mouse::MouseState;
