@@ -17,11 +17,11 @@ mod app;
 mod fonts;
 mod mouse;
 mod input;
-mod ui;
+mod drawer;
 pub mod widgets;
 
 pub use app::App;
 pub use fonts::{FontId, Fonts};
 pub use mouse::MouseState;
 pub use input::InputState;
-pub use ui::Ui;
+pub use drawer::Drawer;

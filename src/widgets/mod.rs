@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::marker::PhantomData;
 
-use crate::{MouseState, Ui};
+use crate::{MouseState, Drawer};
 
 mod button;
 mod manager;
@@ -28,7 +28,7 @@ pub trait Widget: Any {
     fn bounds(&self) -> Rect;
     fn set_bounds(&mut self, bounds: Rect);
     fn update(&mut self, mouse: &MouseState);
-    fn render(&mut self, ui: &mut Ui);
+    fn render(&mut self, drawer: &mut Drawer);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }

@@ -7,7 +7,11 @@ use winit::{
 };
 
 use crate::widgets::WidgetManager;
-use crate::{Fonts, GpuContext, InputState, MouseState, ShapeRenderer, TextRenderer, Ui};
+use crate::{Fonts, GpuContext, InputState, MouseState, ShapeRenderer, TextRenderer, Drawer};
+
+pub struct Ctx {
+    
+}
 
 pub struct App {
     event_loop: Option<EventLoop<()>>,
@@ -224,8 +228,8 @@ impl App {
         shape_renderer.clear();
         text_renderer.clear();
 
-        let mut ui = Ui::new(text_renderer, shape_renderer, fonts);
-        widgets.render_all(&mut ui);
+        let mut drawer = Drawer::new(text_renderer, shape_renderer, fonts);
+        widgets.render_all(&mut drawer);
 
         let frame = match self.gpu.begin_frame() {
             Ok(frame) => frame,

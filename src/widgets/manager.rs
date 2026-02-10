@@ -1,5 +1,5 @@
 use std::ops::{Deref, DerefMut};
-use crate::{MouseState, Ui, widgets::{ButtonWidget, Widget, WidgetHandle}};
+use crate::{MouseState, Drawer, widgets::{ButtonWidget, Widget, WidgetHandle}};
 
 pub struct WidgetMut<'a, T: Widget> {
     widget: &'a mut T,
@@ -99,9 +99,9 @@ impl WidgetManager {
         d
     }
 
-    pub(crate) fn render_all(&mut self, ui: &mut Ui) {
+    pub(crate) fn render_all(&mut self, drawer: &mut Drawer) {
         for widget in self.widgets.iter_mut() {
-            widget.render(ui);
+            widget.render(drawer);
         }
     }
 }

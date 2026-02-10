@@ -1,6 +1,6 @@
 use std::any::Any;
 use crate::{
-    FontId, MouseState, Ui,
+    FontId, MouseState, Drawer,
     widgets::{Rect, Widget},
 };
 
@@ -100,13 +100,13 @@ impl Widget for ButtonWidget {
         }
     }
 
-    fn render(&mut self, ui: &mut Ui) {
+    fn render(&mut self, drawer: &mut Drawer) {
         let font_id = self.font.expect(
             "ButtonWidget has no font — call .font(font_id) before rendering"
         );
 
-        let padding = ui.fonts.default_padding;
-        let (text_w, text_h) = ui.fonts.measure(&self.text, font_id);
+        let padding = drawer.fonts.default_padding;
+        let (text_w, text_h) = drawer.fonts.measure(&self.text, font_id);
 
         if self.auto_size {
             self.bounds.w = text_w + padding * 2.0;
@@ -121,11 +121,11 @@ impl Widget for ButtonWidget {
             self.color
         };
 
-        ui.rect(self.bounds.x, self.bounds.y, self.bounds.w, self.bounds.h, color, [0.0; 4], 0.0);
+        drawer.rect(self.bounds.x, self.bounds.y, self.bounds.w, self.bounds.h, color, [0.0; 4], 0.0);
 
         let text_x = self.bounds.x + (self.bounds.w - text_w) / 2.0;
         let text_y = self.bounds.y + (self.bounds.h - text_h) / 2.0;
-        ui.text(&self.text, font_id, text_x, text_y);
+        drawer.text(&self.text, font_id, text_x, text_y);
     }
 
     fn as_any(&self) -> &dyn Any { self }

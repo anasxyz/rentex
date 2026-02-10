@@ -1,12 +1,12 @@
 use crate::{FontId, Fonts, ShapeRenderer, TextRenderer};
 
-pub struct Ui<'a> {
+pub struct Drawer<'a> {
     pub text_renderer: &'a mut TextRenderer,
     pub shape_renderer: &'a mut ShapeRenderer,
     pub fonts: &'a mut Fonts,
 }
 
-impl<'a> Ui<'a> {
+impl<'a> Drawer<'a> {
     pub fn new(
         text_renderer: &'a mut TextRenderer,
         shape_renderer: &'a mut ShapeRenderer,
