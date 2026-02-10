@@ -12,8 +12,9 @@ pub(crate) struct FontEntry {
 pub struct Fonts {
     pub(crate) font_system: FontSystem,
     entries: HashMap<FontId, FontEntry>,
+    measure_cache: HashMap<(FontId, String), (f32, f32)>,
     next_id: usize,
-    /// padding applied on each side when a widget auto sizes to its text
+    /// padding applied on each side when a widget auto-sizes to its text.
     pub default_padding: f32,
 }
 
@@ -22,6 +23,7 @@ impl Fonts {
         Self {
             font_system: FontSystem::new(),
             entries: HashMap::new(),
+            measure_cache: HashMap::new(),
             next_id: 0,
             default_padding: 12.0,
         }
@@ -38,8 +40,13 @@ impl Fonts {
     }
 
     pub fn measure(&mut self, text: &str, font_id: FontId) -> (f32, f32) {
+        let key = (font_id, text.to_string());
+        if let Some(&cached) = self.measure_cache.get(&key) {
+            return cached;
+        }
+
         let entry = self.entries.get(&font_id)
-            .expect("FontId not found — was it created from a different Fonts instance?");
+            .expect("FontId not found - was it created from a different Fonts instance?");
 
         let family = entry.family.clone();
         let size = entry.size;
@@ -65,12 +72,14 @@ impl Fonts {
             .map(|run| run.line_w)
             .unwrap_or(0.0);
 
-        (width, line_height)
+        let result = (width, line_height);
+        self.measure_cache.insert(key, result);
+        result
     }
 
     pub(crate) fn get(&self, font_id: FontId) -> &FontEntry {
         self.entries.get(&font_id)
-            .expect("FontId not found — was it created from a different Fonts instance?")
+            .expect("FontId not found - was it created from a different Fonts instance?")
     }
 }
 
