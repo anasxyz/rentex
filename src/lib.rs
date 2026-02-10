@@ -14,14 +14,16 @@ pub use render::shape_renderer::ShapeRenderer;
 pub use render::text_renderer::TextRenderer;
 
 mod app;
+mod ctx;
+mod drawer;
 mod fonts;
 mod mouse;
 mod input;
-mod drawer;
 pub mod widgets;
 
-pub use app::App;
+pub use app::{App, RentexApp};
+pub use ctx::Ctx;
+pub use drawer::Drawer;
 pub use fonts::{FontId, Fonts};
 pub use mouse::MouseState;
 pub use input::InputState;
-pub use drawer::Drawer;

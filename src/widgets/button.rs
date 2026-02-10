@@ -29,7 +29,7 @@ impl ButtonWidget {
             id,
             text: text.to_string(),
             font: None,
-            bounds: Rect { x: 0.0, y: 0.0, w: 100.0, h: 40.0 },
+            bounds: Rect::default(),
             color: [0.0; 4],
             hover_color: None,
             press_color: None,
@@ -72,6 +72,16 @@ impl ButtonWidget {
         self
     }
 
+    pub fn hover_color(&mut self, color: [f32; 4]) -> &mut Self {
+        self.hover_color = Some(color);
+        self
+    }
+
+    pub fn press_color(&mut self, color: [f32; 4]) -> &mut Self {
+        self.press_color = Some(color);
+        self
+    }
+
     pub fn text(&mut self, text: impl Into<String>) -> &mut Self {
         self.text = text.into();
         self
@@ -81,7 +91,6 @@ impl ButtonWidget {
 impl Widget for ButtonWidget {
     fn id(&self) -> usize { self.id }
     fn bounds(&self) -> Rect { self.bounds }
-    fn set_bounds(&mut self, bounds: Rect) { self.bounds = bounds; }
 
     fn update(&mut self, mouse: &MouseState) {
         let over = self.bounds.contains(mouse.x, mouse.y);
@@ -102,7 +111,7 @@ impl Widget for ButtonWidget {
 
     fn render(&mut self, drawer: &mut Drawer) {
         let font_id = self.font.expect(
-            "ButtonWidget has no font — call .font(font_id) before rendering"
+            "ButtonWidget has no font, call .font(font_id) before rendering"
         );
 
         let padding = drawer.fonts.default_padding;

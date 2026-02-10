@@ -1,15 +1,14 @@
 use std::any::Any;
 use std::marker::PhantomData;
-
-use crate::{MouseState, Drawer};
+use crate::{Drawer, MouseState};
 
 mod button;
 mod manager;
 
 pub use button::ButtonWidget;
-pub use manager::{WidgetManager, WidgetMut};
+pub use manager::WidgetManager;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,
@@ -26,7 +25,6 @@ impl Rect {
 pub trait Widget: Any {
     fn id(&self) -> usize;
     fn bounds(&self) -> Rect;
-    fn set_bounds(&mut self, bounds: Rect);
     fn update(&mut self, mouse: &MouseState);
     fn render(&mut self, drawer: &mut Drawer);
     fn as_any(&self) -> &dyn Any;

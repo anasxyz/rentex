@@ -6,11 +6,12 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::widgets::WidgetManager;
-use crate::{Fonts, GpuContext, InputState, MouseState, ShapeRenderer, TextRenderer, Drawer};
+use crate::{Ctx, Fonts, GpuContext, ShapeRenderer, TextRenderer, Drawer};
 
-pub struct Ctx {
-    
+pub trait RentexApp: 'static {
+    fn setup(&mut self, ctx: &mut Ctx);
+
+    fn update(&mut self, ctx: &mut Ctx);
 }
 
 pub struct App {
@@ -34,16 +35,9 @@ impl App {
                 .build(&event_loop)
                 .unwrap(),
         );
-
         let gpu = GpuContext::new(window.clone()).await;
         let scale_factor = window.scale_factor();
-
-        Self {
-            event_loop: Some(event_loop),
-            window,
-            gpu,
-            scale_factor,
-        }
+        Self { event_loop: Some(event_loop), window, gpu, scale_factor }
     }
 
     #[inline(always)]
@@ -54,18 +48,18 @@ impl App {
         )
     }
 
-    pub fn run<F>(mut self, mut fonts: Fonts, mut widgets: WidgetManager, mut update_fn: F)
-    where
-        F: FnMut(&mut WidgetManager, &MouseState, &InputState) + 'static,
-    {
+    pub fn run<T: RentexApp>(mut self, fonts: Fonts, mut app: T) {
         let (width, height) = self.logical_size();
 
         let mut text_renderer = TextRenderer::new(&self.gpu.device, &self.gpu.queue, self.gpu.format);
         let mut shape_renderer = ShapeRenderer::new(&self.gpu.device, self.gpu.format, width, height);
         text_renderer.resize(width, height, self.scale_factor);
 
-        let mut mouse = MouseState::default();
-        let mut input = InputState::default();
+        let mut ctx = Ctx::new(fonts);
+
+        app.setup(&mut ctx);
+        // dirty on first frame so initial layout renders
+        ctx.widgets.mark_dirty();
 
         let event_loop = self.event_loop.take().unwrap();
 
@@ -78,90 +72,90 @@ impl App {
                         WindowEvent::CursorMoved { position, .. } => {
                             let new_x = (position.x / self.scale_factor) as f32;
                             let new_y = (position.y / self.scale_factor) as f32;
-                            mouse.dx = new_x - mouse.x;
-                            mouse.dy = new_y - mouse.y;
-                            mouse.x = new_x;
-                            mouse.y = new_y;
+                            ctx.mouse.dx = new_x - ctx.mouse.x;
+                            ctx.mouse.dy = new_y - ctx.mouse.y;
+                            ctx.mouse.x = new_x;
+                            ctx.mouse.y = new_y;
 
-                            let widget_dirty = widgets.update_all(&mouse);
-                            update_fn(&mut widgets, &mouse, &input);
-                            let user_dirty = widgets.take_dirty();
-                            if widget_dirty { println!("CursorMoved: widget_dirty"); }
-                            if user_dirty { println!("CursorMoved: user_dirty"); }
-                            if widget_dirty || user_dirty {
+                            let mouse_snap = ctx.mouse;
+                            let widget_dirty = ctx.widgets.update_all(&mouse_snap);
+                            app.update(&mut ctx);
+                            if widget_dirty || ctx.widgets.take_dirty() {
                                 self.window.request_redraw();
                             }
-                            mouse.dx = 0.0;
-                            mouse.dy = 0.0;
+                            ctx.mouse.dx = 0.0;
+                            ctx.mouse.dy = 0.0;
                         }
                         WindowEvent::MouseInput { state, button, .. } => {
                             let pressed = state == ElementState::Pressed;
                             match button {
                                 MouseButton::Left => {
-                                    mouse.left_just_pressed = pressed && !mouse.left_pressed;
-                                    mouse.left_just_released = !pressed && mouse.left_pressed;
-                                    mouse.left_pressed = pressed;
+                                    ctx.mouse.left_just_pressed = pressed && !ctx.mouse.left_pressed;
+                                    ctx.mouse.left_just_released = !pressed && ctx.mouse.left_pressed;
+                                    ctx.mouse.left_pressed = pressed;
                                 }
                                 MouseButton::Right => {
-                                    mouse.right_just_pressed = pressed && !mouse.right_pressed;
-                                    mouse.right_just_released = !pressed && mouse.right_pressed;
-                                    mouse.right_pressed = pressed;
+                                    ctx.mouse.right_just_pressed = pressed && !ctx.mouse.right_pressed;
+                                    ctx.mouse.right_just_released = !pressed && ctx.mouse.right_pressed;
+                                    ctx.mouse.right_pressed = pressed;
                                 }
                                 MouseButton::Middle => {
-                                    mouse.middle_just_pressed = pressed && !mouse.middle_pressed;
-                                    mouse.middle_just_released = !pressed && mouse.middle_pressed;
-                                    mouse.middle_pressed = pressed;
+                                    ctx.mouse.middle_just_pressed = pressed && !ctx.mouse.middle_pressed;
+                                    ctx.mouse.middle_just_released = !pressed && ctx.mouse.middle_pressed;
+                                    ctx.mouse.middle_pressed = pressed;
                                 }
                                 _ => {}
                             }
-                            let widget_dirty = widgets.update_all(&mouse);
-                            update_fn(&mut widgets, &mouse, &input);
-                            if widget_dirty || widgets.take_dirty() {
+                            let mouse_snap = ctx.mouse;
+                            let widget_dirty = ctx.widgets.update_all(&mouse_snap);
+                            app.update(&mut ctx);
+                            if widget_dirty || ctx.widgets.take_dirty() {
                                 self.window.request_redraw();
                             }
-                            mouse.left_just_pressed = false;
-                            mouse.left_just_released = false;
-                            mouse.right_just_pressed = false;
-                            mouse.right_just_released = false;
-                            mouse.middle_just_pressed = false;
-                            mouse.middle_just_released = false;
+                            ctx.mouse.left_just_pressed = false;
+                            ctx.mouse.left_just_released = false;
+                            ctx.mouse.right_just_pressed = false;
+                            ctx.mouse.right_just_released = false;
+                            ctx.mouse.middle_just_pressed = false;
+                            ctx.mouse.middle_just_released = false;
                         }
                         WindowEvent::MouseWheel { delta, .. } => {
                             match delta {
                                 MouseScrollDelta::LineDelta(x, y) => {
-                                    mouse.scroll_x = x;
-                                    mouse.scroll_y = y;
+                                    ctx.mouse.scroll_x = x;
+                                    ctx.mouse.scroll_y = y;
                                 }
                                 MouseScrollDelta::PixelDelta(pos) => {
-                                    mouse.scroll_x = pos.x as f32;
-                                    mouse.scroll_y = pos.y as f32;
+                                    ctx.mouse.scroll_x = pos.x as f32;
+                                    ctx.mouse.scroll_y = pos.y as f32;
                                 }
                             }
-                            let widget_dirty = widgets.update_all(&mouse);
-                            update_fn(&mut widgets, &mouse, &input);
-                            if widget_dirty || widgets.take_dirty() {
+                            let mouse_snap = ctx.mouse;
+                            let widget_dirty = ctx.widgets.update_all(&mouse_snap);
+                            app.update(&mut ctx);
+                            if widget_dirty || ctx.widgets.take_dirty() {
                                 self.window.request_redraw();
                             }
-                            mouse.scroll_x = 0.0;
-                            mouse.scroll_y = 0.0;
+                            ctx.mouse.scroll_x = 0.0;
+                            ctx.mouse.scroll_y = 0.0;
                         }
                         WindowEvent::KeyboardInput { event, .. } => {
                             let pressed = event.state == ElementState::Pressed;
                             if let PhysicalKey::Code(key) = event.physical_key {
                                 if pressed {
-                                    input.keys_just_pressed.insert(key);
-                                    input.keys_pressed.insert(key);
+                                    ctx.input.keys_just_pressed.insert(key);
+                                    ctx.input.keys_pressed.insert(key);
                                 } else {
-                                    input.keys_just_released.insert(key);
-                                    input.keys_pressed.remove(&key);
+                                    ctx.input.keys_just_released.insert(key);
+                                    ctx.input.keys_pressed.remove(&key);
                                 }
                             }
-                            update_fn(&mut widgets, &mouse, &input);
-                            if widgets.take_dirty() {
+                            app.update(&mut ctx);
+                            if ctx.widgets.take_dirty() {
                                 self.window.request_redraw();
                             }
-                            input.keys_just_pressed.clear();
-                            input.keys_just_released.clear();
+                            ctx.input.keys_just_pressed.clear();
+                            ctx.input.keys_just_released.clear();
                         }
                         WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                             self.on_scale_change(&mut text_renderer, &mut shape_renderer, scale_factor);
@@ -170,12 +164,7 @@ impl App {
                             self.on_resize(&mut text_renderer, &mut shape_renderer, new_size);
                         }
                         WindowEvent::RedrawRequested => {
-                            self.render(
-                                &mut text_renderer,
-                                &mut shape_renderer,
-                                &mut fonts,
-                                &mut widgets,
-                            );
+                            self.render(&mut text_renderer, &mut shape_renderer, &mut ctx);
                         }
                         WindowEvent::CloseRequested => {
                             target.exit();
@@ -188,48 +177,30 @@ impl App {
         });
     }
 
-    fn on_scale_change(
-        &mut self,
-        text_renderer: &mut TextRenderer,
-        shape_renderer: &mut ShapeRenderer,
-        scale_factor: f64,
-    ) {
+    fn on_scale_change(&mut self, text: &mut TextRenderer, shapes: &mut ShapeRenderer, scale_factor: f64) {
         self.scale_factor = scale_factor;
         let physical_size = self.window.inner_size();
         self.gpu.resize(physical_size.width, physical_size.height);
-        let (width, height) = self.logical_size();
-        shape_renderer.resize(width, height);
-        text_renderer.resize(width, height, self.scale_factor);
+        let (w, h) = self.logical_size();
+        shapes.resize(w, h);
+        text.resize(w, h, self.scale_factor);
         self.window.request_redraw();
     }
 
-    fn on_resize(
-        &mut self,
-        text_renderer: &mut TextRenderer,
-        shape_renderer: &mut ShapeRenderer,
-        new_size: winit::dpi::PhysicalSize<u32>,
-    ) {
+    fn on_resize(&mut self, text: &mut TextRenderer, shapes: &mut ShapeRenderer, new_size: winit::dpi::PhysicalSize<u32>) {
         self.gpu.resize(new_size.width, new_size.height);
-        let (width, height) = self.logical_size();
-        shape_renderer.resize(width, height);
-        text_renderer.resize(width, height, self.scale_factor);
+        let (w, h) = self.logical_size();
+        shapes.resize(w, h);
+        text.resize(w, h, self.scale_factor);
         self.window.request_redraw();
     }
 
-    fn render(
-        &mut self,
-        text_renderer: &mut TextRenderer,
-        shape_renderer: &mut ShapeRenderer,
-        fonts: &mut Fonts,
-        widgets: &mut WidgetManager,
-    ) {
-        println!("redrawing");
-
+    fn render(&mut self, text_renderer: &mut TextRenderer, shape_renderer: &mut ShapeRenderer, ctx: &mut Ctx) {
         shape_renderer.clear();
         text_renderer.clear();
 
-        let mut drawer = Drawer::new(text_renderer, shape_renderer, fonts);
-        widgets.render_all(&mut drawer);
+        let mut drawer = Drawer::new(text_renderer, shape_renderer, &mut ctx.fonts);
+        ctx.widgets.render_all(&mut drawer);
 
         let frame = match self.gpu.begin_frame() {
             Ok(frame) => frame,
@@ -257,7 +228,7 @@ impl App {
             let (width, height) = self.logical_size();
             shape_renderer.render(&self.gpu.device, &self.gpu.queue, &mut pass);
             text_renderer.render(
-                &mut fonts.font_system,
+                &mut ctx.fonts.font_system,
                 width,
                 height,
                 self.scale_factor,

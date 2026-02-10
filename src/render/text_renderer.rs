@@ -1,27 +1,22 @@
 use glyphon::{
-    Attrs, Buffer, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache,
-    TextArea, TextAtlas, TextRenderer as GlyphonRenderer,
+    SwashCache, TextAtlas, TextRenderer as GlyphonRenderer,
+    Attrs, Family, Shaping, Buffer, Metrics, TextArea, Resolution, FontSystem,
 };
 use wgpu;
-
-use crate::fonts::FontEntry;
 
 pub struct TextRenderer {
     swash_cache: SwashCache,
     atlas: TextAtlas,
     renderer: GlyphonRenderer,
-    text_buffers: Vec<(Buffer, f32, f32, f32)>, // buffer, x, y, scale
+    // (buffer, x, y, scale)
+    text_buffers: Vec<(Buffer, f32, f32, f32)>,
     screen_width: f32,
     screen_height: f32,
     scale_factor: f64,
 }
 
 impl TextRenderer {
-    pub fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        format: wgpu::TextureFormat,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let swash_cache = SwashCache::new();
         let mut atlas = TextAtlas::new(device, queue, format);
         let renderer = GlyphonRenderer::new(
@@ -55,24 +50,25 @@ impl TextRenderer {
     pub fn draw(
         &mut self,
         font_system: &mut FontSystem,
-        font_entry: &FontEntry,
+        family: String,
+        size: f32,
         text: &str,
         x: f32,
         y: f32,
     ) {
         let scale = self.scale_factor as f32;
-        let line_height = font_entry.size * 1.4;
+        let line_height = size * 1.4;
 
         let mut buffer = Buffer::new(
             font_system,
-            Metrics::new(font_entry.size * scale, line_height * scale),
+            Metrics::new(size * scale, line_height * scale),
         );
 
         buffer.set_size(font_system, self.screen_width - x, self.screen_height - y);
         buffer.set_text(
             font_system,
             text,
-            Attrs::new().family(Family::Name(font_entry.family.as_str())),
+            Attrs::new().family(Family::Name(family.as_str())),
             Shaping::Advanced,
         );
         buffer.shape_until_scroll(font_system);
@@ -82,7 +78,7 @@ impl TextRenderer {
 
     pub fn render<'pass>(
         &'pass mut self,
-        font_system: &'pass mut FontSystem,
+        font_system: &mut FontSystem,
         screen_width: f32,
         screen_height: f32,
         scale_factor: f64,
@@ -97,13 +93,12 @@ impl TextRenderer {
         let physical_width = (screen_width * scale_factor as f32) as u32;
         let physical_height = (screen_height * scale_factor as f32) as u32;
 
-        let text_areas: Vec<TextArea> = self
-            .text_buffers
+        let text_areas: Vec<TextArea> = self.text_buffers
             .iter()
-            .map(|(buffer, x, y, stored_scale)| TextArea {
+            .map(|(buffer, x, y, scale)| TextArea {
                 buffer,
-                left: x * stored_scale,
-                top: y * stored_scale,
+                left: x * scale,
+                top: y * scale,
                 scale: 1.0,
                 bounds: glyphon::TextBounds {
                     left: 0,
@@ -121,10 +116,7 @@ impl TextRenderer {
                 queue,
                 font_system,
                 &mut self.atlas,
-                Resolution {
-                    width: physical_width,
-                    height: physical_height,
-                },
+                Resolution { width: physical_width, height: physical_height },
                 text_areas,
                 &mut self.swash_cache,
             )

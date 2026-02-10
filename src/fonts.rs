@@ -1,20 +1,18 @@
 use std::collections::HashMap;
-use glyphon::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
+use glyphon::{FontSystem, Attrs, Family, Shaping, Buffer, Metrics};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FontId(usize);
 
-pub(crate) struct FontEntry {
+pub struct FontEntry {
     pub family: String,
     pub size: f32,
 }
 
 pub struct Fonts {
     pub(crate) font_system: FontSystem,
-    entries: HashMap<FontId, FontEntry>,
-    measure_cache: HashMap<(FontId, String), (f32, f32)>,
-    next_id: usize,
-    /// padding applied on each side when a widget auto-sizes to its text.
+    entries: Vec<FontEntry>,
+    measure_cache: HashMap<(usize, String), (f32, f32)>,
     pub default_padding: f32,
 }
 
@@ -22,41 +20,40 @@ impl Fonts {
     pub fn new() -> Self {
         Self {
             font_system: FontSystem::new(),
-            entries: HashMap::new(),
+            entries: Vec::new(),
             measure_cache: HashMap::new(),
-            next_id: 0,
-            default_padding: 12.0,
+            default_padding: 8.0,
         }
     }
 
     pub fn add(&mut self, family: &str, size: f32) -> FontId {
-        let id = FontId(self.next_id);
-        self.next_id += 1;
-        self.entries.insert(id, FontEntry {
+        let id = FontId(self.entries.len());
+        self.entries.push(FontEntry {
             family: family.to_string(),
             size,
         });
         id
     }
 
-    pub fn measure(&mut self, text: &str, font_id: FontId) -> (f32, f32) {
-        let key = (font_id, text.to_string());
+    pub fn get(&self, id: FontId) -> &FontEntry {
+        &self.entries[id.0]
+    }
+
+    pub fn measure(&mut self, text: &str, id: FontId) -> (f32, f32) {
+        let key = (id.0, text.to_string());
         if let Some(&cached) = self.measure_cache.get(&key) {
             return cached;
         }
 
-        let entry = self.entries.get(&font_id)
-            .expect("FontId not found - was it created from a different Fonts instance?");
-
-        let family = entry.family.clone();
-        let size = entry.size;
+        // copy values out before mutably borrowing font_system
+        let family = self.entries[id.0].family.clone();
+        let size = self.entries[id.0].size;
         let line_height = size * 1.4;
 
         let mut buffer = Buffer::new(
             &mut self.font_system,
             Metrics::new(size, line_height),
         );
-
         buffer.set_size(&mut self.font_system, f32::MAX, f32::MAX);
         buffer.set_text(
             &mut self.font_system,
@@ -66,25 +63,15 @@ impl Fonts {
         );
         buffer.shape_until_scroll(&mut self.font_system);
 
-        let width = buffer
-            .layout_runs()
-            .next()
-            .map(|run| run.line_w)
-            .unwrap_or(0.0);
+        let mut width: f32 = 0.0;
+        let mut height: f32 = 0.0;
+        for run in buffer.layout_runs() {
+            width = width.max(run.line_w);
+            height += line_height;
+        }
 
-        let result = (width, line_height);
+        let result = (width, height);
         self.measure_cache.insert(key, result);
         result
-    }
-
-    pub(crate) fn get(&self, font_id: FontId) -> &FontEntry {
-        self.entries.get(&font_id)
-            .expect("FontId not found - was it created from a different Fonts instance?")
-    }
-}
-
-impl Default for Fonts {
-    fn default() -> Self {
-        Self::new()
     }
 }
