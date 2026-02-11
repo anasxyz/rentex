@@ -1,9 +1,9 @@
 use crate::widgets::Widget;
+use crate::Drawer;
 
 #[derive(Clone, Copy)]
 enum Direction { H, V }
 
-/// A child slot in a container — either a widget or a nested container.
 enum Child {
     Widget(usize),
     Container(usize),
@@ -19,7 +19,6 @@ struct Container {
 }
 
 impl Container {
-    /// Compute layout, returning (total_width, total_height) of this container's content.
     fn compute(&self, containers: &[Container], widgets: &mut Vec<Box<dyn Widget>>) -> (f32, f32) {
         let mut cursor = self.padding;
         let mut max_cross: f32 = 0.0;
@@ -47,14 +46,10 @@ impl Container {
                     }
                 }
                 Child::Container(child_idx) => {
-                    // Temporarily set child container's origin, then recurse.
                     let child_container = &containers[*child_idx];
-                    // We need to get the child's size before we can advance cursor,
-                    // so we do a dry-run first to measure, then a real pass.
                     let (cw, ch) = measure_container(child_container, containers, widgets);
                     match self.direction {
                         Direction::H => {
-                            // Child container positioned at current cursor
                             set_container_origin(*child_idx, self.x + cursor, self.y + self.padding, containers, widgets);
                             cursor += cw + self.gap;
                             max_cross = max_cross.max(ch);
@@ -76,7 +71,6 @@ impl Container {
     }
 }
 
-/// Measure a container's total size without modifying widget bounds.
 fn measure_container(c: &Container, containers: &[Container], widgets: &[Box<dyn Widget>]) -> (f32, f32) {
     let mut cursor = c.padding;
     let mut max_cross: f32 = 0.0;
@@ -106,10 +100,7 @@ fn measure_container(c: &Container, containers: &[Container], widgets: &[Box<dyn
     }
 }
 
-/// Reposition a container at a new origin and re-run its layout.
 fn set_container_origin(idx: usize, x: f32, y: f32, containers: &[Container], widgets: &mut Vec<Box<dyn Widget>>) {
-    // We can't mutate containers[idx].x/y here (immutable borrow), so we
-    // manually walk children using the provided x/y as origin.
     let container = &containers[idx];
     let mut cursor = container.padding;
     for child in &container.children {
@@ -131,6 +122,15 @@ fn set_container_origin(idx: usize, x: f32, y: f32, containers: &[Container], wi
                     Direction::V => { set_container_origin(*child_idx, x + container.padding, y + cursor, containers, widgets); cursor += ch + container.gap; }
                 }
             }
+        }
+    }
+}
+
+fn collect_widget_ids(c: &Container, containers: &[Container], ids: &mut Vec<usize>) {
+    for child in &c.children {
+        match child {
+            Child::Widget(id) => ids.push(*id),
+            Child::Container(idx) => collect_widget_ids(&containers[*idx], containers, ids),
         }
     }
 }
@@ -163,7 +163,6 @@ impl<'a> ContainerBuilder<'a> {
         self
     }
 
-    /// Nest another container inside this one.
     pub fn add_container(self, other: ContainerRef) -> Self {
         self.manager.containers[self.index].children.push(Child::Container(other.index));
         self
@@ -174,7 +173,6 @@ impl<'a> ContainerBuilder<'a> {
     }
 }
 
-/// A handle to a built container, for nesting inside another container.
 #[derive(Clone, Copy)]
 pub struct ContainerRef {
     pub(crate) index: usize,
@@ -211,8 +209,49 @@ impl LayoutManager {
         ContainerBuilder { manager: self, index }
     }
 
+    pub fn debug_draw(&self, widgets: &[Box<dyn Widget>], drawer: &mut Drawer) {
+        const COLORS: [[f32; 4]; 6] = [
+            [0.2, 0.5, 1.0, 0.15],
+            [1.0, 0.35, 0.35, 0.15],
+            [0.2, 1.0, 0.5, 0.15],
+            [1.0, 0.8, 0.2, 0.15],
+            [0.8, 0.2, 1.0, 0.15],
+            [0.2, 0.9, 1.0, 0.15],
+        ];
+        const OUTLINE_COLORS: [[f32; 4]; 6] = [
+            [0.2, 0.5, 1.0, 0.7],
+            [1.0, 0.35, 0.35, 0.7],
+            [0.2, 1.0, 0.5, 0.7],
+            [1.0, 0.8, 0.2, 0.7],
+            [0.8, 0.2, 1.0, 0.7],
+            [0.2, 0.9, 1.0, 0.7],
+        ];
+        for (i, container) in self.containers.iter().enumerate() {
+            let mut ids: Vec<usize> = Vec::new();
+            collect_widget_ids(container, &self.containers, &mut ids);
+            if ids.is_empty() { continue; }
+
+            let mut min_x = f32::MAX;
+            let mut min_y = f32::MAX;
+            let mut max_x = f32::MIN;
+            let mut max_y = f32::MIN;
+            for id in &ids {
+                if let Some(w) = widgets.iter().find(|w| w.id() == *id) {
+                    let b = w.bounds();
+                    min_x = min_x.min(b.x);
+                    min_y = min_y.min(b.y);
+                    max_x = max_x.max(b.x + b.w);
+                    max_y = max_y.max(b.y + b.h);
+                }
+            }
+
+            let color = COLORS[i % COLORS.len()];
+            let outline = OUTLINE_COLORS[i % OUTLINE_COLORS.len()];
+            drawer.rect(min_x, min_y, max_x - min_x, max_y - min_y, color, outline, 1.5);
+        }
+    }
+
     pub fn compute_all(&self, widgets: &mut Vec<Box<dyn Widget>>) {
-        // Find which containers are nested inside others — only run compute on roots.
         let mut is_child = vec![false; self.containers.len()];
         for c in &self.containers {
             for child in &c.children {

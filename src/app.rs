@@ -67,6 +67,7 @@ impl WindowState {
         self.shape_renderer.clear();
         self.text_renderer.clear();
         let mut drawer = Drawer::new(&mut self.text_renderer, &mut self.shape_renderer, &mut ctx.fonts);
+        ctx.layout.debug_draw(&ctx.widgets.widgets, &mut drawer);
         ctx.widgets.render_all(&mut drawer);
 
         let frame = match self.gpu.begin_frame() {
