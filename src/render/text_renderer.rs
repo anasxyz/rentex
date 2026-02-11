@@ -86,7 +86,7 @@ impl TextRenderer {
                 entry.text = text.to_string();
                 entry.family = family.clone();
                 entry.size = size;
-                entry.buffer.set_metrics(font_system, Metrics::new(size * scale, line_height * scale));
+                entry.buffer.set_metrics(font_system, Metrics::new(size, line_height));
                 entry.buffer.set_size(font_system, Some(self.screen_width - x), Some(self.screen_height - y));
                 entry.buffer.set_text(
                     font_system,
@@ -97,7 +97,7 @@ impl TextRenderer {
                 entry.buffer.shape_until_scroll(font_system, false);
             }
         } else {
-            let mut buffer = Buffer::new(font_system, Metrics::new(size * scale, line_height * scale));
+            let mut buffer = Buffer::new(font_system, Metrics::new(size, line_height));
             buffer.set_size(font_system, Some(self.screen_width - x), Some(self.screen_height - y));
             buffer.set_text(
                 font_system,
@@ -140,7 +140,7 @@ impl TextRenderer {
                 buffer: &entry.buffer,
                 left: entry.x * entry.scale,
                 top: entry.y * entry.scale,
-                scale: 1.0,
+                scale: entry.scale,
                 bounds: TextBounds {
                     left: 0,
                     top: 0,

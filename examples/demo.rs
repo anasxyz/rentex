@@ -4,154 +4,160 @@ use rentex::widgets::{ButtonWidget, SliderWidget, TextInputWidget, WidgetHandle}
 use rentex::{App, Ctx, FontId, Fonts, RentexApp};
 
 struct Demo {
-    name_input: Option<WidgetHandle<TextInputWidget>>,
-    message_input: Option<WidgetHandle<TextInputWidget>>,
-    send_btn: Option<WidgetHandle<ButtonWidget>>,
-    clear_btn: Option<WidgetHandle<ButtonWidget>>,
-    test_button_1: Option<WidgetHandle<ButtonWidget>>,
-    test_button_2: Option<WidgetHandle<ButtonWidget>>,
-    size_slider: Option<WidgetHandle<SliderWidget>>,
-    font_small: Option<FontId>,
-    last_msg_len: usize,
+    font: Option<FontId>,
+
+    // top row
+    search_input: Option<WidgetHandle<TextInputWidget>>,
+    search_btn:   Option<WidgetHandle<ButtonWidget>>,
+
+    // middle: two columns side by side
+    name_input:   Option<WidgetHandle<TextInputWidget>>,
+    email_input:  Option<WidgetHandle<TextInputWidget>>,
+    vol_slider:   Option<WidgetHandle<SliderWidget>>,
+    bright_slider: Option<WidgetHandle<SliderWidget>>,
+
+    // bottom action row
+    ok_btn:     Option<WidgetHandle<ButtonWidget>>,
+    cancel_btn: Option<WidgetHandle<ButtonWidget>>,
+    reset_btn:  Option<WidgetHandle<ButtonWidget>>,
 }
 
 impl RentexApp for Demo {
     fn setup(&mut self, ctx: &mut Ctx) {
         let font = ctx.fonts.add("JetBrainsMono Nerd Font", 14.0);
-        self.font_small = Some(font);
+        self.font = Some(font);
 
-        let name_input = ctx.widgets.text_input();
-        ctx.widgets
-            .get_mut(name_input)
-            .font(font)
-            .size(280.0, 32.0)
-            .placeholder("name...");
-        self.name_input = Some(name_input);
+        let search_input = ctx.widgets.text_input();
+        ctx.widgets.get_mut(search_input)
+            .font(font).size(260.0, 32.0).placeholder("search...");
+        self.search_input = Some(search_input);
 
-        let message_input = ctx.widgets.text_input();
-        ctx.widgets
-            .get_mut(message_input)
-            .font(font)
-            .size(280.0, 32.0)
-            .placeholder("message...");
-        self.message_input = Some(message_input);
-
-        let send_btn = ctx.widgets.button("send");
-        ctx.widgets
-            .get_mut(send_btn)
-            .font(font)
-            .size(84.0, 32.0)
-            .position(100.0, 600.0)
+        let search_btn = ctx.widgets.button("go");
+        ctx.widgets.get_mut(search_btn)
+            .font(font).size(52.0, 32.0)
             .color([0.18, 0.48, 0.92, 1.0])
             .hover_color([0.25, 0.58, 1.0, 1.0])
             .press_color([0.12, 0.35, 0.75, 1.0]);
-        self.send_btn = Some(send_btn);
+        self.search_btn = Some(search_btn);
 
-        let clear_btn = ctx.widgets.button("clear");
-        ctx.widgets
-            .get_mut(clear_btn)
-            .font(font)
-            .size(84.0, 32.0)
-            .color([0.30, 0.12, 0.12, 1.0])
-            .hover_color([0.48, 0.18, 0.18, 1.0])
-            .press_color([0.20, 0.08, 0.08, 1.0]);
-        self.clear_btn = Some(clear_btn);
+        let name_input = ctx.widgets.text_input();
+        ctx.widgets.get_mut(name_input)
+            .font(font).size(180.0, 32.0).placeholder("name...");
+        self.name_input = Some(name_input);
 
-        let test_button_1 = ctx.widgets.button("test button 1");
-        ctx.widgets
-            .get_mut(test_button_1)
-            .font(font)
-            .size(120.0, 32.0)
-            .color([0.30, 0.12, 0.12, 1.0])
-            .hover_color([0.48, 0.18, 0.18, 1.0])
-            .press_color([0.20, 0.08, 0.08, 1.0]);
-        self.test_button_1 = Some(test_button_1);
+        let email_input = ctx.widgets.text_input();
+        ctx.widgets.get_mut(email_input)
+            .font(font).size(180.0, 32.0).placeholder("email...");
+        self.email_input = Some(email_input);
 
-        let size_slider = ctx.widgets.slider();
-        ctx.widgets
-            .get_mut(size_slider)
-            .size(220.0, 18.0)
-            .range(0.0, 100.0)
-            .value(50.0);
-        self.size_slider = Some(size_slider);
+        let vol_slider = ctx.widgets.slider();
+        ctx.widgets.get_mut(vol_slider)
+            .size(180.0, 18.0).range(0.0, 100.0).value(70.0)
+            .fill_color([0.18, 0.48, 0.92, 1.0]);
+        self.vol_slider = Some(vol_slider);
 
-        let vstack = ctx
-            .layout
+        let bright_slider = ctx.widgets.slider();
+        ctx.widgets.get_mut(bright_slider)
+            .size(180.0, 18.0).range(0.0, 100.0).value(40.0)
+            .fill_color([0.85, 0.55, 0.1, 1.0]);
+        self.bright_slider = Some(bright_slider);
+
+        let ok_btn = ctx.widgets.button("ok");
+        ctx.widgets.get_mut(ok_btn)
+            .font(font).size(88.0, 32.0)
+            .color([0.12, 0.42, 0.22, 1.0])
+            .hover_color([0.18, 0.58, 0.32, 1.0])
+            .press_color([0.08, 0.28, 0.15, 1.0]);
+        self.ok_btn = Some(ok_btn);
+
+        let cancel_btn = ctx.widgets.button("cancel");
+        ctx.widgets.get_mut(cancel_btn)
+            .font(font).size(88.0, 32.0)
+            .color([0.38, 0.12, 0.12, 1.0])
+            .hover_color([0.52, 0.18, 0.18, 1.0])
+            .press_color([0.25, 0.08, 0.08, 1.0]);
+        self.cancel_btn = Some(cancel_btn);
+
+        let reset_btn = ctx.widgets.button("reset");
+        ctx.widgets.get_mut(reset_btn)
+            .font(font).size(88.0, 32.0)
+            .color([0.22, 0.22, 0.22, 1.0])
+            .hover_color([0.32, 0.32, 0.32, 1.0])
+            .press_color([0.14, 0.14, 0.14, 1.0]);
+        self.reset_btn = Some(reset_btn);
+
+        let search_row = ctx.layout
+            .hstack()
+            .gap(8.0)
+            .add(search_input)
+            .add(search_btn)
+            .as_ref();
+
+        let col_a = ctx.layout
             .vstack()
             .gap(10.0)
             .add(name_input)
+            .add(email_input)
             .as_ref();
 
-        let vstack2 = ctx
-            .layout
+        let col_b = ctx.layout
             .vstack()
-            .gap(10.0)
-            .add(message_input)
+            .gap(18.0)
+            .add(vol_slider)
+            .add(bright_slider)
             .as_ref();
 
-        let main_hstack = ctx
-            .layout
+        let columns = ctx.layout
             .hstack()
-            .position(100.0, 100.0)
-            .gap(1.0)
-            .add(send_btn)
-            .add_container(vstack)
-            .add_container(vstack2);
+            .gap(16.0)
+            .add_container(col_a)
+            .add_container(col_b)
+            .as_ref();
+
+        let action_row = ctx.layout
+            .hstack()
+            .gap(8.0)
+            .add(ok_btn)
+            .add(cancel_btn)
+            .add(reset_btn)
+            .as_ref();
+
+        ctx.layout
+            .vstack()
+            .position(40.0, 40.0)
+            .gap(20.0)
+            .add_container(search_row)
+            .add_container(columns)
+            .add_container(action_row);
     }
 
     fn update(&mut self, ctx: &mut Ctx) {
-        let send_btn = self.send_btn.unwrap();
-        let clear_btn = self.clear_btn.unwrap();
-        let name_input = self.name_input.unwrap();
-        let message_input = self.message_input.unwrap();
-
-        if ctx.widgets.get(send_btn).just_clicked {
-            let name = ctx.widgets.get(name_input).value.clone();
-            let msg = ctx.widgets.get(message_input).value.clone();
-            let name = if name.trim().is_empty() {
-                "anon".into()
-            } else {
-                name
-            };
-            let _msg = if msg.trim().is_empty() {
-                "(empty)".into()
-            } else {
-                msg
-            };
-            ctx.widgets.get_mut(message_input).value("");
+        if ctx.widgets.get(self.ok_btn.unwrap()).just_clicked {
+            ctx.widgets.get_mut(self.name_input.unwrap()).value("");
+            ctx.widgets.get_mut(self.email_input.unwrap()).value("");
         }
 
-        if ctx.widgets.get(clear_btn).just_clicked {
-            ctx.widgets.get_mut(name_input).value("");
-            ctx.widgets.get_mut(message_input).value("");
-        }
-
-        let msg_len = ctx.widgets.get(message_input).value.len();
-        if msg_len != self.last_msg_len {
-            self.last_msg_len = msg_len;
-            let label = if msg_len > 0 {
-                format!("send ({})", msg_len)
-            } else {
-                "send".to_string()
-            };
-            ctx.widgets.get_mut(send_btn).text(label);
+        if ctx.widgets.get(self.reset_btn.unwrap()).just_clicked {
+            ctx.widgets.get_mut(self.vol_slider.unwrap()).value(70.0);
+            ctx.widgets.get_mut(self.bright_slider.unwrap()).value(40.0);
         }
     }
 }
 
 fn main() {
-    App::new("rntx demo", 560, 480).run(
+    App::new("rentex", 440, 260).run(
         Fonts::new(),
         Demo {
+            font: None,
+            search_input: None,
+            search_btn: None,
             name_input: None,
-            message_input: None,
-            send_btn: None,
-            clear_btn: None,
-            test_button_1: None,
-            test_button_2: None,
-            size_slider: None,
-            font_small: None,
-            last_msg_len: 0,
+            email_input: None,
+            vol_slider: None,
+            bright_slider: None,
+            ok_btn: None,
+            cancel_btn: None,
+            reset_btn: None,
         },
     );
 }
