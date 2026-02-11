@@ -22,7 +22,7 @@ mod input;
 mod layout;
 pub mod widgets;
 
-pub use app::{App, RuiApp};
+pub use app::{App, MaleoApp};
 pub use ctx::Ctx;
 pub use drawer::Drawer;
 pub use fonts::{FontId, Fonts};

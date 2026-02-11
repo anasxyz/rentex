@@ -1,7 +1,7 @@
 #![allow(dead_code, unused)]
 
-use rui::widgets::{ButtonWidget, SliderWidget, TextInputWidget, WidgetHandle};
-use rui::{App, Ctx, FontId, Fonts, RuiApp};
+use maleo::widgets::{ButtonWidget, SliderWidget, TextInputWidget, WidgetHandle};
+use maleo::{App, Ctx, FontId, Fonts, MaleoApp};
 
 struct Demo {
     font: Option<FontId>,
@@ -22,7 +22,7 @@ struct Demo {
     reset_btn:  Option<WidgetHandle<ButtonWidget>>,
 }
 
-impl RuiApp for Demo {
+impl MaleoApp for Demo {
     fn setup(&mut self, ctx: &mut Ctx) {
         let font = ctx.fonts.add("JetBrainsMono Nerd Font", 14.0);
         self.font = Some(font);
@@ -145,7 +145,7 @@ impl RuiApp for Demo {
 }
 
 fn main() {
-    App::new("rui", 440, 260).run(
+    App::new("maleo", 440, 260).run(
         Fonts::new(),
         Demo {
             font: None,

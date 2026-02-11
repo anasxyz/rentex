@@ -9,7 +9,7 @@ use winit::{
 
 use crate::{Ctx, Fonts, GpuContext, ShapeRenderer, TextRenderer, Drawer};
 
-pub trait RuiApp: 'static {
+pub trait MaleoApp: 'static {
     fn setup(&mut self, ctx: &mut Ctx);
     fn update(&mut self, ctx: &mut Ctx);
 }
@@ -111,7 +111,7 @@ impl WindowState {
     }
 }
 
-struct WinitHandler<T: RuiApp> {
+struct WinitHandler<T: MaleoApp> {
     title: String,
     width: u32,
     height: u32,
@@ -121,7 +121,7 @@ struct WinitHandler<T: RuiApp> {
     setup_done: bool,
 }
 
-impl<T: RuiApp> WinitHandler<T> {
+impl<T: MaleoApp> WinitHandler<T> {
     fn new(title: &str, width: u32, height: u32, app: T) -> Self {
         Self {
             title: title.to_string(),
@@ -135,7 +135,7 @@ impl<T: RuiApp> WinitHandler<T> {
     }
 }
 
-impl<T: RuiApp> ApplicationHandler for WinitHandler<T> {
+impl<T: MaleoApp> ApplicationHandler for WinitHandler<T> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window_state.is_some() {
             return;
@@ -318,7 +318,7 @@ impl App {
         Self { title: title.to_string(), width, height }
     }
 
-    pub fn run<T: RuiApp>(self, fonts: Fonts, app: T) {
+    pub fn run<T: MaleoApp>(self, fonts: Fonts, app: T) {
         let event_loop = EventLoop::new().unwrap();
         let mut handler = WinitHandler::new(&self.title, self.width, self.height, app);
         event_loop.run_app(&mut handler).unwrap();
