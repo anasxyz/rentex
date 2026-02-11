@@ -9,6 +9,7 @@ pub struct Ctx {
     pub fonts: Fonts,
     pub mouse: MouseState,
     pub input: InputState,
+    pub exit: bool,
 }
 
 impl Ctx {
@@ -19,6 +20,11 @@ impl Ctx {
             fonts,
             mouse: MouseState::default(),
             input: InputState::default(),
+            exit: false,
         }
+    }
+
+    pub fn exit(&mut self) {
+        self.exit = true;
     }
 }

@@ -54,6 +54,10 @@ impl RentexApp for MyApp {
                 .get_mut(self.btn.unwrap())
                 .text(format!("Value: {}", self.count));
         }
+
+        if ctx.widgets.get(self.btn2.unwrap()).just_clicked {
+            ctx.exit();
+        }
     }
 }
 
