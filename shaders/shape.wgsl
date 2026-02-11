@@ -1,5 +1,3 @@
-// src/shaders/shape.wgsl
-
 struct VertexInput {
     @location(0) position: vec2<f32>,
     @location(1) color: vec4<f32>,
@@ -14,8 +12,8 @@ struct VertexOutput {
 fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
     
-    // Position is already in NDC (Normalized Device Coordinates) from CPU
-    // NDC ranges from -1 to 1 for both x and y
+    // position is already in ndc from cpu
+    // ndc ranges from -1 to 1 for both x and y
     output.clip_position = vec4<f32>(input.position, 0.0, 1.0);
     output.color = input.color;
     
