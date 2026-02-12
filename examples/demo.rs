@@ -11,9 +11,20 @@ impl BentoApp for Demo {
     fn once(&mut self, ctx: &mut Ctx) {
         let font = ctx.fonts.add("main_font", "JetBrainsMono Nerd Font", 14.0);
 
-        ctx.rect(10.0, 10.0, 100.0, 50.0, Color::RED, Color::BLACK, 0.0);
+        ctx.rect(
+            "rect1",
+            10.0,
+            10.0,
+            100.0,
+            50.0,
+            Color::RED,
+            Color::BLACK,
+            0.0,
+        );
 
-        ctx.text("Hello World", font, 100.0, 10.0, Color::WHITE);
+        ctx.text("text1", "Hello World", font, 100.0, 10.0, Color::WHITE);
+
+        ctx.button("button1", "Click Me", 10.0, 200.0);
     }
 
     fn update(&mut self, ctx: &mut Ctx) {

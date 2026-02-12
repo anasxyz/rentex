@@ -64,30 +64,7 @@ impl WindowState {
         ctx.shape_renderer.clear();
         ctx.text_renderer.clear();
 
-        // draw all stored rects
-        for rect in &ctx.rects {
-            ctx.shape_renderer.rect(
-                rect.x,
-                rect.y,
-                rect.w,
-                rect.h,
-                rect.color.to_array(),
-                rect.outline_color.to_array(),
-                rect.outline_thickness,
-            );
-        }
-
-        // draw all stored texts
-        for text in &ctx.texts {
-            ctx.text_renderer.draw(
-                &mut ctx.fonts.font_system,
-                text.font_family.clone(),
-                text.font_size,
-                &text.text,
-                text.x,
-                text.y,
-            );
-        }
+        ctx.render_all();
 
         app.update(ctx);
 
@@ -181,7 +158,8 @@ impl<T: BentoApp> ApplicationHandler for WinitHandler<T> {
 
         self.window_state = Some(ws);
 
-        let fonts = Fonts::new();
+        let mut fonts = Fonts::new();
+        fonts.add("default", "Arial", 14.0);
         let mut ctx = Ctx::new(fonts, text_renderer, shape_renderer);
         self.app.once(&mut ctx);
         self.ctx = Some(ctx);
@@ -217,6 +195,11 @@ impl<T: BentoApp> ApplicationHandler for WinitHandler<T> {
                 ctx.mouse.y = new_y;
 
                 let mouse_snap = ctx.mouse;
+
+                ctx.mark_dirty();
+                self.app.update(ctx);
+                ws.window.request_redraw();
+
                 if ctx.exit {
                     self.window_state = None;
                     event_loop.exit();

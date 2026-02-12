@@ -1,7 +1,7 @@
+use crate::Color;
 use glyphon::{
-    SwashCache, TextAtlas, TextRenderer as GlyphonRenderer, Cache, Viewport,
-    Attrs, Family, Shaping, Buffer, Metrics, TextArea, TextBounds, FontSystem,
-    Resolution, Color,
+    Attrs, Buffer, Cache, Color as GlyphonColor, Family, FontSystem, Metrics, Resolution, Shaping,
+    SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer as GlyphonRenderer, Viewport,
 };
 use wgpu;
 
@@ -13,6 +13,7 @@ struct TextEntry {
     text: String,
     family: String,
     size: f32,
+    color: GlyphonColor,
 }
 
 pub struct TextRenderer {
@@ -36,7 +37,11 @@ impl TextRenderer {
         let renderer = GlyphonRenderer::new(
             &mut atlas,
             device,
-            wgpu::MultisampleState { count: 4, mask: !0, alpha_to_coverage_enabled: false },
+            wgpu::MultisampleState {
+                count: 4,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
             None,
         );
         let viewport = Viewport::new(device, &cache);
@@ -69,7 +74,14 @@ impl TextRenderer {
         text: &str,
         x: f32,
         y: f32,
+        color: Color,
     ) {
+        let glyphon_color = GlyphonColor::rgb(
+            (color.r * 255.0) as u8,
+            (color.g * 255.0) as u8,
+            (color.b * 255.0) as u8,
+        );
+
         let scale = self.scale_factor as f32;
         let line_height = size * 1.4;
         let idx = self.active;
@@ -80,14 +92,22 @@ impl TextRenderer {
             entry.x = x;
             entry.y = y;
             entry.scale = scale;
+            entry.color = glyphon_color;
 
-            let content_changed = entry.text != text || entry.family != family || entry.size != size;
+            let content_changed =
+                entry.text != text || entry.family != family || entry.size != size;
             if content_changed {
                 entry.text = text.to_string();
                 entry.family = family.clone();
                 entry.size = size;
-                entry.buffer.set_metrics(font_system, Metrics::new(size, line_height));
-                entry.buffer.set_size(font_system, Some(self.screen_width - x), Some(self.screen_height - y));
+                entry
+                    .buffer
+                    .set_metrics(font_system, Metrics::new(size, line_height));
+                entry.buffer.set_size(
+                    font_system,
+                    Some(self.screen_width - x),
+                    Some(self.screen_height - y),
+                );
                 entry.buffer.set_text(
                     font_system,
                     text,
@@ -98,7 +118,11 @@ impl TextRenderer {
             }
         } else {
             let mut buffer = Buffer::new(font_system, Metrics::new(size, line_height));
-            buffer.set_size(font_system, Some(self.screen_width - x), Some(self.screen_height - y));
+            buffer.set_size(
+                font_system,
+                Some(self.screen_width - x),
+                Some(self.screen_height - y),
+            );
             buffer.set_text(
                 font_system,
                 text,
@@ -107,10 +131,14 @@ impl TextRenderer {
             );
             buffer.shape_until_scroll(font_system, false);
             self.entries.push(TextEntry {
-                buffer, x, y, scale,
+                buffer,
+                x,
+                y,
+                scale,
                 text: text.to_string(),
                 family,
                 size,
+                color: glyphon_color,
             });
         }
     }
@@ -128,7 +156,13 @@ impl TextRenderer {
         let physical_width = (screen_width * scale_factor as f32) as u32;
         let physical_height = (screen_height * scale_factor as f32) as u32;
 
-        self.viewport.update(queue, Resolution { width: physical_width, height: physical_height });
+        self.viewport.update(
+            queue,
+            Resolution {
+                width: physical_width,
+                height: physical_height,
+            },
+        );
 
         if self.active == 0 {
             return;
@@ -147,7 +181,7 @@ impl TextRenderer {
                     right: physical_width as i32,
                     bottom: physical_height as i32,
                 },
-                default_color: Color::rgb(255, 255, 255),
+                default_color: entry.color,
                 custom_glyphs: &[],
             })
             .collect();
@@ -164,7 +198,9 @@ impl TextRenderer {
             )
             .unwrap();
 
-        self.renderer.render(&self.atlas, &self.viewport, pass).unwrap();
+        self.renderer
+            .render(&self.atlas, &self.viewport, pass)
+            .unwrap();
     }
 
     pub fn trim_atlas(&mut self) {

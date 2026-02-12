@@ -23,6 +23,15 @@ impl Color {
         [self.r, self.g, self.b, self.a]
     }
 
+    pub fn from_array(arr: [f32; 4]) -> Self {
+        Self {
+            r: arr[0],
+            g: arr[1],
+            b: arr[2],
+            a: arr[3],
+        }
+    }
+
     pub const RED: Self = Self::rgb(1.0, 0.0, 0.0);
     pub const GREEN: Self = Self::rgb(0.0, 1.0, 0.0);
     pub const BLUE: Self = Self::rgb(0.0, 0.0, 1.0);
