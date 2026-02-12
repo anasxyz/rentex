@@ -7,7 +7,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::{Ctx, Drawer, Fonts, GpuContext, ShapeRenderer, TextRenderer};
+use crate::{Ctx, Fonts, GpuContext, ShapeRenderer, TextRenderer};
 
 pub trait BentoApp: 'static {
     fn once(&mut self, ctx: &mut Ctx);
@@ -63,6 +63,31 @@ impl WindowState {
         println!("render");
         ctx.shape_renderer.clear();
         ctx.text_renderer.clear();
+
+        // draw all stored rects
+        for rect in &ctx.rects {
+            ctx.shape_renderer.rect(
+                rect.x,
+                rect.y,
+                rect.w,
+                rect.h,
+                rect.color.to_array(),
+                rect.outline_color.to_array(),
+                rect.outline_thickness,
+            );
+        }
+
+        // draw all stored texts
+        for text in &ctx.texts {
+            ctx.text_renderer.draw(
+                &mut ctx.fonts.font_system,
+                text.font_family.clone(),
+                text.font_size,
+                &text.text,
+                text.x,
+                text.y,
+            );
+        }
 
         app.update(ctx);
 
@@ -221,7 +246,10 @@ impl<T: BentoApp> ApplicationHandler for WinitHandler<T> {
                     _ => {}
                 }
                 let mouse_snap = ctx.mouse;
+
+                self.app.update(ctx);
                 ws.window.request_redraw();
+
                 if ctx.exit {
                     self.window_state = None;
                     event_loop.exit();
@@ -246,6 +274,10 @@ impl<T: BentoApp> ApplicationHandler for WinitHandler<T> {
                     }
                 }
                 let mouse_snap = ctx.mouse;
+
+                self.app.update(ctx);
+                ws.window.request_redraw();
+
                 if ctx.exit {
                     self.window_state = None;
                     event_loop.exit();
@@ -255,8 +287,6 @@ impl<T: BentoApp> ApplicationHandler for WinitHandler<T> {
                 ctx.mouse.scroll_y = 0.0;
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                ws.window.request_redraw();
-
                 let pressed = event.state == ElementState::Pressed;
                 if let PhysicalKey::Code(key) = event.physical_key {
                     if pressed {
@@ -267,14 +297,11 @@ impl<T: BentoApp> ApplicationHandler for WinitHandler<T> {
                         ctx.input.keys_pressed.remove(&key);
                     }
                 }
-                if pressed {
-                    if let winit::keyboard::Key::Character(s) = &event.logical_key {
-                        for c in s.chars() {
-                            if !c.is_control() {}
-                        }
-                    }
-                }
                 let mouse_snap = ctx.mouse;
+
+                self.app.update(ctx);
+                ws.window.request_redraw();
+
                 if ctx.exit {
                     self.window_state = None;
                     event_loop.exit();
@@ -304,10 +331,11 @@ impl<T: BentoApp> ApplicationHandler for WinitHandler<T> {
                 ws.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
-                ws.render(ctx, &mut self.app);
+                if ctx.take_dirty() {
+                    ws.render(ctx, &mut self.app);
+                }
             }
             WindowEvent::CloseRequested => {
-                self.window_state = None;
                 event_loop.exit();
             }
             _ => {}

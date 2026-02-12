@@ -15,14 +15,14 @@ pub use render::text_renderer::TextRenderer;
 
 mod app;
 mod ctx;
-mod drawer;
 mod fonts;
 mod mouse;
 mod input;
+mod color;
 
 pub use app::{App, BentoApp};
-pub use ctx::Ctx;
-pub use drawer::Drawer;
+pub use ctx::{Ctx, Rect, Text};
 pub use fonts::{FontId, Fonts};
 pub use mouse::MouseState;
 pub use input::InputState;
+pub use color::Color;
