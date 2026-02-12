@@ -27,6 +27,8 @@ pub struct Ctx {
     pub(crate) text_renderer: TextRenderer,
     pub(crate) shape_renderer: ShapeRenderer,
 
+    pub window_height: f32,
+    pub window_width: f32,
     pub fonts: Fonts,
     pub mouse: MouseState,
     pub input: InputState,
@@ -54,7 +56,15 @@ impl Ctx {
             rects: Vec::new(),
             texts: Vec::new(),
             dirty: false,
+            window_height: 0.0,
+            window_width: 0.0,
         }
+    }
+
+    pub fn resize(&mut self, width: f32, height: f32) {
+        println!("screen dimensions: {}x{}", width, height);
+        self.window_width = width;
+        self.window_height = height;
     }
 
     pub fn exit(&mut self) {

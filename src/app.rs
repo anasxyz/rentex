@@ -44,6 +44,7 @@ impl WindowState {
         let (w, h) = self.logical_size();
         ctx.shape_renderer.resize(w, h);
         ctx.text_renderer.resize(w, h, self.scale_factor);
+        ctx.resize(w, h);
     }
 
     fn on_scale_change(
@@ -57,6 +58,7 @@ impl WindowState {
         let (w, h) = self.logical_size();
         ctx.shape_renderer.resize(w, h);
         ctx.text_renderer.resize(w, h, self.scale_factor);
+        ctx.resize(w, h);
     }
 
     fn render<T: BentoApp>(&mut self, ctx: &mut Ctx, app: &mut T) {
@@ -176,13 +178,14 @@ impl<T: BentoApp> ApplicationHandler for WinitHandler<T> {
         let height = (physical.height as f64 / scale_factor) as f32;
 
         let mut text_renderer = TextRenderer::new(&ws.gpu.device, &ws.gpu.queue, ws.gpu.format);
-        let shape_renderer = ShapeRenderer::new(&ws.gpu.device, ws.gpu.format, width, height);
         text_renderer.resize(width, height, scale_factor);
+        let shape_renderer = ShapeRenderer::new(&ws.gpu.device, ws.gpu.format, width, height);
+        let fonts = Fonts::new();
+        let mut ctx = Ctx::new(fonts, text_renderer, shape_renderer);
+        ctx.resize(width, height);
 
         self.window_state = Some(ws);
 
-        let fonts = Fonts::new();
-        let mut ctx = Ctx::new(fonts, text_renderer, shape_renderer);
         self.app.once(&mut ctx);
         self.ctx = Some(ctx);
         self.setup_done = true;
