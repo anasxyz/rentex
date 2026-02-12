@@ -23,6 +23,7 @@ mod ui;
 
 pub use app::{App, BentoApp};
 pub use ctx::{Ctx};
+pub use ui::{Height, Width};
 pub use fonts::{FontId, Fonts};
 pub use mouse::MouseState;
 pub use input::InputState;

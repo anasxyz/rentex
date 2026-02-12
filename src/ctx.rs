@@ -8,6 +8,9 @@ pub struct Ctx {
     pub input: InputState,
     pub exit: bool,
 
+    pub window_width: f32,
+    pub window_height: f32,
+
     dirty: bool,
 }
 
@@ -22,6 +25,10 @@ impl Ctx {
             mouse: MouseState::default(),
             input: InputState::default(),
             exit: false,
+
+            window_width: 0.0,
+            window_height: 0.0,
+
             dirty: false,
         }
     }
@@ -32,6 +39,12 @@ impl Ctx {
 
     pub fn mark_dirty(&mut self) {
         self.ui.dirty = true;
+    }
+
+    pub fn resize(&mut self, width: f32, height: f32) {
+        self.window_width = width;
+        self.window_height = height;
+        self.ui.resize(width, height);
     }
 
     pub(crate) fn take_dirty(&mut self) -> bool {

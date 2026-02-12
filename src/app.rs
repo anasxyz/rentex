@@ -44,6 +44,7 @@ impl WindowState {
         let (w, h) = self.logical_size();
         ctx.ui.shape_renderer.resize(w, h);
         ctx.ui.text_renderer.resize(w, h, self.scale_factor);
+        ctx.resize(w, h);
     }
 
     fn on_scale_change(
@@ -57,6 +58,7 @@ impl WindowState {
         let (w, h) = self.logical_size();
         ctx.ui.shape_renderer.resize(w, h);
         ctx.ui.text_renderer.resize(w, h, self.scale_factor);
+        ctx.resize(w, h);
     }
 
     fn render<T: BentoApp>(&mut self, ctx: &mut Ctx, app: &mut T) {
@@ -92,7 +94,8 @@ impl WindowState {
             });
 
             let (width, height) = self.logical_size();
-            ctx.ui.shape_renderer
+            ctx.ui
+                .shape_renderer
                 .render(&self.gpu.device, &self.gpu.queue, &mut pass);
             ctx.ui.text_renderer.render(
                 &mut ctx.ui.fonts.font_system,
@@ -161,6 +164,8 @@ impl<T: BentoApp> ApplicationHandler for WinitHandler<T> {
         let mut fonts = Fonts::new();
         fonts.add("default", "Arial", 14.0);
         let mut ctx = Ctx::new(fonts, text_renderer, shape_renderer);
+        ctx.resize(width, height);
+
         self.app.once(&mut ctx);
         self.ctx = Some(ctx);
         self.setup_done = true;

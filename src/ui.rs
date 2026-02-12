@@ -1,5 +1,19 @@
 use crate::{Color, FontId, Fonts, ShapeRenderer, TextRenderer};
 
+pub enum Width {
+    Fixed(f32),
+    Full,
+    Percent(f32),
+}
+
+pub enum Height {
+    Fixed(f32),
+    Full,
+    Percent(f32),
+}
+
+pub trait UiElement {}
+
 pub struct Rect {
     pub id: String,
     pub x: f32,
@@ -10,6 +24,8 @@ pub struct Rect {
     pub outline_color: Color,
     pub outline_thickness: f32,
     pub visible: bool,
+    width_mode: Width,
+    height_mode: Height,
 }
 
 pub struct Text {
@@ -43,6 +59,10 @@ pub struct Button {
     pub visible: bool,
 }
 
+impl UiElement for Button {}
+impl UiElement for Rect {}
+impl UiElement for Text {}
+
 pub struct Ui {
     pub(crate) text_renderer: TextRenderer,
     pub(crate) shape_renderer: ShapeRenderer,
@@ -53,6 +73,9 @@ pub struct Ui {
     pub buttons: Vec<Button>,
 
     pub dirty: bool,
+    
+    window_width: f32,
+    window_height: f32,
 }
 
 impl Ui {
@@ -65,6 +88,8 @@ impl Ui {
             texts: Vec::new(),
             buttons: Vec::new(),
             dirty: false,
+            window_width: 0.0,
+            window_height: 0.0,
         }
     }
 
@@ -83,8 +108,8 @@ impl Ui {
         id: &str,
         x: f32,
         y: f32,
-        w: f32,
-        h: f32,
+        w: Width,
+        h: Height,
         color: Color,
         outline_color: Color,
         outline_thickness: f32,
@@ -93,16 +118,30 @@ impl Ui {
             panic!("Element with id '{}' already exists!", id);
         }
 
+        let width = match w {
+            Width::Fixed(val) => val,
+            Width::Full => self.window_width,
+            Width::Percent(p) => self.window_width * p,
+        };
+        
+        let height = match h {
+            Height::Fixed(val) => val,
+            Height::Full => self.window_height,
+            Height::Percent(p) => self.window_height * p,
+        };
+
         let new_rect = Rect {
             id: id.to_string(),
             x,
             y,
-            w,
-            h,
+            w: width,
+            h: height,
             color,
             outline_color,
             outline_thickness,
             visible: true,
+            width_mode: w,
+            height_mode: h,
         };
         self.rects.push(new_rect);
         self.mark_dirty();
@@ -139,8 +178,8 @@ impl Ui {
 
         let padding = self.fonts.default_padding;
 
-        let font_id = self.fonts.get_by_name("default").unwrap();
-        let bg_color = Color::rgb(0.27, 0.51, 0.71);
+        let font_id = self.fonts.default();
+        let bg_color = Color::rgb(0.27, 0.51, 0.50);
         let text_color = Color::WHITE;
         let outline_color = Color::TRANSPARENT;
         let outline_thickness = 0.0;
@@ -308,6 +347,25 @@ impl Ui {
             }
         }
         false
+    }
+
+    pub fn resize(&mut self, window_width: f32, window_height: f32) {
+        self.window_width = window_width;
+        self.window_height = window_height;
+        
+        for rect in &mut self.rects {
+            rect.w = match rect.width_mode {
+                Width::Fixed(w) => w,
+                Width::Full => window_width,
+                Width::Percent(p) => window_width * p,
+            };
+            rect.h = match rect.height_mode {
+                Height::Fixed(h) => h,
+                Height::Full => window_height,
+                Height::Percent(p) => window_height * p,
+            };
+        }
+        self.mark_dirty();
     }
 
 }
